@@ -221,6 +221,16 @@ exports.Login = async (req, res) => {
       });
     }
 
+    if (Number(user.registrationStep) < 2 || !user.businessId) {
+      return res.status(403).json({
+        status: 0,
+        userExist: true,
+        message: "Please add business details before login.",
+        step: Number(user.registrationStep) || 1,
+        nextStep: 2,
+      });
+    }
+
     await sendWhatsappOtp(user.mobileNumber);
 
     return res.status(200).json({
