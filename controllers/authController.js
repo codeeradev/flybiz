@@ -1,59 +1,217 @@
-const User = require("../models/user");
-const OtpModel = require("../models/otp");
 const jwt = require("jsonwebtoken");
 
-const validator = require("validator");
+const User = require("../models/user");
+const Business = require("../models/business");
+const OtpModel = require("../models/otp");
+const { sendWhatsappOtp } = require("../utils/whatsappOtp");
+const {
+  getUploadedFilePath,
+  isValidEmail,
+  isValidMobileNumber,
+  normalizeEmail,
+  normalizeMobileNumber,
+  normalizeString,
+} = require("../utils/authUtils");
 
-const buildLookupQuery = ({ mobileNumber, email }) => {
-  const filters = [];
+const getAuthErrorMessage = (fallbackMessage, error) => {
+  const errorMessage = normalizeString(error?.message);
 
-  if (mobileNumber) {
-    filters.push({ mobileNumber });
+  if (errorMessage && errorMessage.toLowerCase().includes("whatsapp")) {
+    return errorMessage;
   }
 
-  if (email) {
-    filters.push({ email });
-  }
+  return fallbackMessage;
+};
 
-  return { $or: filters };
+exports.register = async (req, res) => {
+  try {
+    const step = Number(req.body.step);
+
+    if (step === 1) {
+      const mobileNumber = normalizeMobileNumber(req.body.mobileNumber);
+      const email = normalizeEmail(req.body.email);
+
+      if (!mobileNumber || !email) {
+        return res.status(400).json({
+          message: "Mobile number and email are required",
+        });
+      }
+
+      if (!isValidMobileNumber(mobileNumber)) {
+        return res.status(400).json({
+          message: "Enter a valid mobile number with country code",
+        });
+      }
+
+      if (!isValidEmail(email)) {
+        return res.status(400).json({
+          message: "Enter a valid email address",
+        });
+      }
+
+      const existingUser = await User.findOne({
+        $or: [{ mobileNumber }, { email }],
+      });
+
+      if (existingUser) {
+        if (Number(existingUser.registrationStep) === 1) {
+          return res.status(200).json({
+            status: 1,
+            userExist: true,
+            message: "User already exists. Please add business details.",
+            step: 1,
+            nextStep: 2,
+          });
+        }
+
+        return res.status(409).json({
+          status: 0,
+          userExist: true,
+          message: "User already exists. Please login.",
+          step: 2,
+          nextStep: "login",
+        });
+      }
+
+      const user = await User.create({
+        mobileNumber,
+        email,
+        name: normalizeString(req.body.name),
+        image: getUploadedFilePath(req.files?.image?.[0]),
+        registrationStep: 1,
+      });
+
+      return res.status(201).json({
+        status: 1,
+        message: "Personal details saved successfully",
+        step: 1,
+        nextStep: 2,
+      });
+    }
+
+    if (step === 2) {
+      const lookupMobileNumber = normalizeMobileNumber(req.body.mobileNumber);
+      const lookupEmail = normalizeEmail(req.body.email);
+      const businessName = normalizeString(req.body.businessName);
+      const gstNumber = normalizeString(req.body.gstNumber);
+      const email = normalizeEmail(req.body.businessEmail || req.body.email);
+      const mobileNumber = normalizeMobileNumber(
+        req.body.businessMobileNumber || req.body.mobileNumber,
+      );
+      const address = normalizeString(req.body.address);
+
+      if (!lookupMobileNumber && !lookupEmail) {
+        return res.status(400).json({
+          message: "Mobile number or email is required",
+        });
+      }
+
+      if (!businessName || !gstNumber || !email || !mobileNumber || !address) {
+        return res.status(400).json({
+          message:
+            "businessName, gstNumber, business email, business mobile number and address are required",
+        });
+      }
+
+      if (!isValidEmail(email)) {
+        return res.status(400).json({
+          message: "Enter a valid business email address",
+        });
+      }
+
+      if (!isValidMobileNumber(mobileNumber)) {
+        return res.status(400).json({
+          message: "Enter a valid business mobile number with country code",
+        });
+      }
+
+      const userQuery = [];
+
+      if (lookupMobileNumber) {
+        userQuery.push({ mobileNumber: lookupMobileNumber });
+      }
+
+      if (lookupEmail) {
+        userQuery.push({ email: lookupEmail });
+      }
+
+      const user = await User.findOne({
+        $or: userQuery,
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found. Please complete step 1 first.",
+        });
+      }
+
+      if (Number(user.registrationStep) === 2) {
+        return res.status(409).json({
+          status: 0,
+          message: "Business details already added. Please login.",
+          step: 2,
+          nextStep: "login",
+        });
+      }
+
+      const business = await Business.create({
+        userId: user._id,
+        businessName,
+        gstNumber,
+        email,
+        mobileNumber,
+        address,
+        website: normalizeString(req.body.website) || null,
+        companyLogo: getUploadedFilePath(
+          req.files?.companyLogo?.[0] || req.files?.image?.[0],
+        ),
+      });
+
+      user.businessId = business._id;
+      user.registrationStep = 2;
+      await user.save();
+
+      await sendWhatsappOtp(user.mobileNumber);
+
+      return res.status(201).json({
+        status: 1,
+        message: "Business details saved successfully. OTP sent on WhatsApp",
+        mobileNumber: user.mobileNumber,
+        otpChannel: "whatsapp",
+        step: 2,
+        nextStep: "verify-otp",
+      });
+    }
+
+    return res.status(400).json({
+      message: "step must be 1 or 2",
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      status: 2,
+      message: getAuthErrorMessage("Error in registration", error),
+    });
+  }
 };
 
 exports.Login = async (req, res) => {
   try {
-    const { username } = req.body;
+    const mobileNumber = normalizeMobileNumber(req.body.mobileNumber);
 
-    if (!username) {
+    if (!mobileNumber) {
       return res.status(400).json({
-        message: "Email or mobile number is required",
+        message: "Mobile number is required",
       });
     }
 
-    const value = username.trim();
-
-    const isEmail = validator.isEmail(value);
-    const isMobile = validator.isMobilePhone(value, "any", {
-      strictMode: true,
-    });
-
-    if (!isEmail && !isMobile) {
+    if (!isValidMobileNumber(mobileNumber)) {
       return res.status(400).json({
-        message: "Enter a valid email or mobile number with country code",
+        message: "Enter a valid mobile number with country code",
       });
     }
 
-    let mobileNumber = null;
-    let email = null;
-
-    if (isEmail) {
-      email = value.toLowerCase();
-    }
-
-    if (isMobile) {
-      mobileNumber = value;
-    }
-
-    const userQuery = buildLookupQuery({ mobileNumber, email });
-    const user = await User.findOne(userQuery);
+    const user = await User.findOne({ mobileNumber });
 
     if (!user) {
       return res.status(404).json({
@@ -63,109 +221,38 @@ exports.Login = async (req, res) => {
       });
     }
 
-    const otp = Math.floor(1000 + Math.random() * 9000);
-    const otpQuery = buildLookupQuery({
-      mobileNumber: user.mobileNumber,
-      email: user.email,
-    });
-
-    await OtpModel.deleteMany(otpQuery);
-    await OtpModel.create({
-      mobileNumber: user.mobileNumber,
-      email: user.email,
-      otp: String(otp),
-      expiresAt: Date.now() + 2 * 60 * 1000,
-    });
+    await sendWhatsappOtp(user.mobileNumber);
 
     return res.status(200).json({
       status: 1,
       userExist: true,
-      message: "OTP sent successfully",
-      otp,
+      message: "OTP sent successfully on WhatsApp",
+      mobileNumber: user.mobileNumber,
+      otpChannel: "whatsapp",
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({
       status: 2,
-      message: "Error in login",
-    });
-  }
-};
-
-exports.register = async (req, res) => {
-  try {
-    const { mobileNumber, email, name } = req.body;
-
-    if (!mobileNumber || !email) {
-      return res.status(400).json({
-        message: "Mobile number and email are required",
-      });
-    }
-
-    const userQuery = buildLookupQuery({ mobileNumber, email });
-    const existingUser = await User.findOne(userQuery);
-
-    if (existingUser) {
-      return res.status(409).json({
-        message: "User already exists. Please login.",
-      });
-    }
-
-    const image = req.files?.image?.[0]?.filename
-      ? `/assets/uploads/${req.files.image[0].filename}`
-      : null;
-
-    const userData = {
-      mobileNumber,
-      email,
-    };
-
-    if (name) {
-      userData.name = name;
-    }
-
-    if (image) {
-      userData.image = image;
-    }
-
-    const user = await User.create(userData);
-
-    const otp = Math.floor(1000 + Math.random() * 9000);
-    const otpQuery = buildLookupQuery({
-      mobileNumber: user.mobileNumber,
-      email: user.email,
-    });
-
-    await OtpModel.deleteMany(otpQuery);
-    await OtpModel.create({
-      mobileNumber: user.mobileNumber,
-      email: user.email,
-      otp: String(otp),
-      expiresAt: Date.now() + 2 * 60 * 1000,
-    });
-
-    return res.status(201).json({
-      status: 1,
-      userExist: true,
-      message: "OTP sent successfully",
-      otp,
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      status: 2,
-      message: "Error in registration",
+      message: getAuthErrorMessage("Error in login", error),
     });
   }
 };
 
 exports.verifyOtp = async (req, res) => {
   try {
-    const { username, otp } = req.body;
+    const mobileNumber = normalizeMobileNumber(req.body.mobileNumber);
+    const otp = normalizeString(req.body.otp);
 
-    if (!username) {
+    if (!mobileNumber) {
       return res.status(400).json({
-        message: "Email or mobile number is required",
+        message: "Mobile number is required",
+      });
+    }
+
+    if (!isValidMobileNumber(mobileNumber)) {
+      return res.status(400).json({
+        message: "Enter a valid mobile number with country code",
       });
     }
 
@@ -175,68 +262,31 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    const value = username.trim();
+    const user = await User.findOne({ mobileNumber });
 
-    if (!value) {
-      return res.status(400).json({
-        message: "Email or mobile number is required",
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
       });
     }
 
-    const isEmail = validator.isEmail(value);
-    const isMobile = validator.isMobilePhone(value, "any", {
-      strictMode: true,
+    const otpRecord = await OtpModel.findOne({
+      mobileNumber,
+      otp: String(otp),
     });
 
-    if (!isEmail && !isMobile) {
-      return res.status(400).json({
-        message: "Enter a valid email or mobile number with country code",
-      });
-    }
-
-    let mobileNumber = null;
-    let email = null;
-
-    if (isEmail) {
-      email = value.toLowerCase();
-    }
-
-    if (isMobile) {
-      mobileNumber = value;
-    }
-
-    const otpQuery = {
-      otp: String(otp),
-    };
-
-    if (mobileNumber) {
-      otpQuery.mobileNumber = mobileNumber;
-    }
-
-    if (email) {
-      otpQuery.email = email;
-    }
-
-    const otpRecord = await OtpModel.findOne(otpQuery);
-
     if (!otpRecord) {
-      return res.status(400).json({ message: "Invalid OTP" });
+      return res.status(400).json({
+        message: "Invalid OTP",
+      });
     }
 
     if (new Date(otpRecord.expiresAt) < new Date()) {
       await OtpModel.deleteOne({ _id: otpRecord._id });
-      return res.status(400).json({ message: "OTP expired" });
-    }
 
-    const user = await User.findOne(
-      buildLookupQuery({
-        mobileNumber: otpRecord.mobileNumber,
-        email: otpRecord.email,
-      }),
-    );
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(400).json({
+        message: "OTP expired",
+      });
     }
 
     await OtpModel.deleteOne({ _id: otpRecord._id });
@@ -246,9 +296,87 @@ exports.verifyOtp = async (req, res) => {
     return res.status(200).json({
       message: "Login successful",
       token,
+      userId: user._id,
+      businessId: user.businessId || null,
+      mobileNumber: user.mobileNumber,
+      registrationStep: user.registrationStep || 1,
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "An error occurred" });
+    return res.status(500).json({
+      message: "An error occurred",
+    });
+  }
+};
+
+exports.getProfile = async (req, res) => {
+  try {
+    const userId = req.user;
+
+    const profile = await User.findById(userId).select("-__v").populate({
+      path: "businessId",
+      select: "-__v",
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      profile,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "An error occurred",
+    });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user;
+
+    const { name, email, businessName, gstNumber, address, website } =
+      req.body;
+
+    const updateData = {};
+
+    if (name) updateData.name = normalizeString(name);
+
+    if (email) updateData.email = normalizeEmail(email);
+
+    if (gstNumber) updateData.gstNumber = normalizeString(gstNumber);
+
+    if (businessName) updateData.businessName = normalizeString(businessName);
+
+    if (address) updateData.address = normalizeString(address);
+
+    if (website) updateData.website = normalizeString(website);
+
+    if (image) {
+      updateData.image = getUploadedFilePath(req.files?.image?.[0]);
+    }
+
+    if (companyLogo) {
+      updateData.companyLogo = getUploadedFilePath(req.files?.companyLogo?.[0]);
+    }
+
+    const update = await User.findByIdAndUpdate(userId, updateData, {
+      new: true,
+    }).select("-__v");
+
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      profile: update,
+    });
+    
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "An error occurred",
+    });
   }
 };

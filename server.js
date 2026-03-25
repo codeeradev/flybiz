@@ -14,12 +14,16 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const server = http.createServer(app);
 
 const authRoutes = require("./routes/authRoutes");
+const imageRoutes = require("./routes/imageRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
 
 app.get("/", (req, res) => {
   res.send("FLyBiz api is running ...");
 });
 
 app.use("/auth", authRoutes);
+app.use("/ai", imageRoutes);
+app.use("/settings", settingsRoutes);
 
 const startServer = async () => {
   const mongoConnection = await connectDb();
