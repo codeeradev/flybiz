@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String },
     name: { type: String },
     image: { type: String },
+    password: { type: String },
     businessId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "business",
@@ -14,6 +15,36 @@ const userSchema = new mongoose.Schema(
     registrationStep: {
       type: Number,
       default: 1,
+    },
+    facebookUserToken: {
+      type: String,
+      default: null,
+    },
+
+    role: {
+      type: String,
+      enum: ["admin", "user"],
+      default: "user",
+    },
+    
+    facebookPageId: {
+      type: String,
+      default: null,
+    },
+
+    facebookPageToken: {
+      type: String,
+      default: null,
+    },
+
+    instagramId: {
+      type: String,
+      default: null,
+    },
+
+    instagramUsername: {
+      type: String,
+      default: null,
     },
   },
   { timestamps: true },

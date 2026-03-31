@@ -366,11 +366,11 @@ exports.updateProfile = async (req, res) => {
 
     if (website) updateData.website = normalizeString(website);
 
-    if (image) {
+    if (req.files?.image?.[0]) {
       updateData.image = getUploadedFilePath(req.files?.image?.[0]);
     }
 
-    if (companyLogo) {
+    if (req.files?.companyLogo?.[0]) {
       updateData.companyLogo = getUploadedFilePath(req.files?.companyLogo?.[0]);
     }
 
