@@ -12,15 +12,15 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const userId = decoded._id; // ✅ Correct key
-    const admin = await User.findById(userId);
+    const user = await User.findById(userId);
 
-    if (!admin) {
-      // console.log("Admin not found:", userId);
-      return res.status(401).json({ message: "Admin not found" });
+    if (!user) {
+      // console.log("User not found:", userId);
+      return res.status(401).json({ message: "User not found" });
     }
 
-    req.admin = admin;
-    // console.log("Token verified successfully for admin:", userId);
+    req.user = user;
+    // console.log("Token verified successfully for user:", userId);
 
     next();
   } catch (error) {

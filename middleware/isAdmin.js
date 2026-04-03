@@ -24,7 +24,7 @@ const verifyAdminToken = async (req, res, next) => {
       return res.status(403).json({ message: "Access denied: Admins only" });
     }
 
-    req.user = user;
+    req.admin = user;
     // console.log("Token verified successfully for user:", userId);
 
     next();

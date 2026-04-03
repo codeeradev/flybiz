@@ -14,6 +14,15 @@ const businessSchema = new mongoose.Schema(
     mobileNumber: { type: String },
     address: { type: String },
     website: { type: String },
+
+    googleAccountId: String,
+    googleLocationId: String,
+
+    accessToken: String,
+    refreshToken: String,
+
+    averageRating: Number,
+    totalReviews: Number,
   },
   { timestamps: true },
 );

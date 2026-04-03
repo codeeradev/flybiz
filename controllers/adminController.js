@@ -43,7 +43,10 @@ exports.getAllUsers = async (req, res) => {
       return res.status(400).json({ message: "Admin ID is required" });
     }
 
-    const users = await User.find({role:"user", _id: { $ne: id}});
+    const users = await User.find({
+      role: { $ne: "admin" },
+      _id: { $ne: id._id }
+    });
 
     return res
       .status(200)
