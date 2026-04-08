@@ -4,6 +4,8 @@ const User = require("../models/user");
 const Business = require("../models/business");
 const OtpModel = require("../models/otp");
 const { sendWhatsappOtp } = require("../utils/whatsappOtp");
+const { createOtpForMobile } = require("../utils/authUtils");
+
 const {
   getUploadedFilePath,
   isValidEmail,
@@ -231,12 +233,15 @@ exports.Login = async (req, res) => {
       });
     }
 
-    await sendWhatsappOtp(user.mobileNumber);
+    const otp = await createOtpForMobile(mobileNumber);
+    
+    // await sendWhatsappOtp(user.mobileNumber);
 
     return res.status(200).json({
       status: 1,
       userExist: true,
       message: "OTP sent successfully on WhatsApp",
+      otp,
       mobileNumber: user.mobileNumber,
       otpChannel: "whatsapp",
     });
