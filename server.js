@@ -14,6 +14,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const server = http.createServer(app);
 
 const adminRoutes = require("./routes/adminRoutes");
+const adminAnalyticsRoutes = require("./routes/admin/analyticsRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
@@ -26,6 +27,7 @@ app.get("/", (req, res) => {
 
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 
+app.use("/admin/analytics", adminAnalyticsRoutes);
 app.use("/admin", adminRoutes);
 app.use("/auth", authRoutes);
 app.use("/ai", imageRoutes);
