@@ -8,6 +8,7 @@ const { getValidAuthClient } = require("../utils/googleClient");
 const {
   fetchGoogleInsights,
   getLocations,
+  getAccounts,
   getReviews,
   normalizeLocationId,
   updateReviewReply,
@@ -39,8 +40,12 @@ const getUserIdFromRequest = (req) => {
 };
 
 const getBusinessForUser = async (userId) => {
+  // const business = await Business.findOne({
+  //   userId,
+  // });
+
   const business = await Business.findOne({
-    userId,
+    _id:"69bd23ae5ddb4bc3728de422",
   });
 
   if (!business) {
@@ -93,16 +98,40 @@ exports.connectGoogle = async (req, res) => {
 exports.getLocations = async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);
-    await getBusinessForUser(userId);
+    const business = await getBusinessForUser(userId);
 
     const auth = await getValidAuthClient(userId);
-    const locations = await getLocations(auth);
+
+    // First time only
+    if (!business.googleAccountId) {
+      const accounts = await getAccounts(auth);
+
+      if (!accounts.length) {
+        throw createError(404, "No Google Business Account Found");
+      }
+
+      business.googleAccountId = accounts[0].name.split("/")[1];
+      await business.save();
+    }
+
+    const locations = await getLocations(auth, business.googleAccountId);
+
+    // Save latest locations in DB
+    if (locations.length) {
+      business.googleLocations = locations.map((location) => ({
+        googleLocationId: normalizeLocationId(location.name),
+        googleBusinessName: location.title,
+        googlePlaceId: location.metadata?.placeId || "",
+      }));
+
+      await business.save();
+    }
 
     return res.json(
       locations.map((location) => ({
         ...location,
         locationId: normalizeLocationId(location.name),
-      })),
+      }))
     );
   } catch (error) {
     return handleGoogleError(res, error);
@@ -122,6 +151,7 @@ exports.googleCallback = async (req, res) => {
       throw createError(400, "Google did not return any usable tokens");
     }
 
+    console.log("Tokens received:", tokens);
     if (tokens.refresh_token) {
       business.refreshToken = tokens.refresh_token;
     }
@@ -148,27 +178,28 @@ exports.selectLocation = async (req, res) => {
     }
 
     const business = await getBusinessForUser(userId);
-    const auth = await getValidAuthClient(userId);
-    const locations = await getLocations(auth);
-    const selectedLocationId = normalizeLocationId(locationId);
-    const matchedLocation = locations.find(
-      (location) => normalizeLocationId(location.name) === selectedLocationId,
+
+    const selectedLocation = business.googleLocations.find(
+      (location) => location.googleLocationId === locationId,
     );
 
-    if (!matchedLocation) {
-      throw createError(
-        404,
-        "Selected Google location was not found for this account",
-      );
+    if (!selectedLocation) {
+      throw createError(404, "Location not found");
     }
 
-    business.googleLocationId = selectedLocationId;
+    business.googleLocationId = selectedLocation.googleLocationId;
+    business.googleBusinessName = selectedLocation.googleBusinessName;
+    business.googlePlaceId = selectedLocation.googlePlaceId;
+    business.googleConnected = true;
+    business.lastGoogleSync = new Date();
+
     await business.save();
 
     return res.json({
-      message: "Location connected",
-      locationId: selectedLocationId,
-      location: matchedLocation,
+      message: "Location connected successfully",
+      locationId: business.googleLocationId,
+      businessName: business.googleBusinessName,
+      placeId: business.googlePlaceId,
     });
   } catch (error) {
     return handleGoogleError(res, error);
@@ -234,15 +265,17 @@ exports.getAnalytics = async (req, res) => {
   }
 };
 
+
+
 exports.getActiveBusinesses = async (req, res) => {
   try {
     const activeBusinesses = await Business.find({
-      accessToken: { $exists: true, $ne: null },
-      refreshToken: { $exists: true, $ne: null },
+      // accessToken: { $exists: true, $ne: null },
+      googleAccountId: { $exists: true, $ne: null },
       googleLocationId: { $exists: true, $ne: null },
     });
 
-    return res.json(activeBusinesses);
+    return res.status(200).json({activeBusinesses: activeBusinesses});
   } catch (error) {
     return handleGoogleError(res, error);
   }

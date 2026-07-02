@@ -86,17 +86,30 @@ const formatMetricSeries = (metricTimeSeries) => {
   };
 };
 
-const getLocations = async (auth) => {
+const getAccounts = async (auth) => {
+  const accountManagement = google.mybusinessaccountmanagement({
+    version: "v1",
+    auth,
+  });
+
+  const { data } = await accountManagement.accounts.list();
+
+  return data.accounts || [];
+};
+
+const getLocations = async (auth, googleAccountId) => {
   const businessInfo = google.mybusinessbusinessinformation({
     version: "v1",
     auth,
   });
 
-  const response = await businessInfo.accounts.locations.list({
-    parent: "accounts/-",
+  console.log("businessInfo:", businessInfo);
+  const { data } = await businessInfo.accounts.locations.list({
+    parent: `accounts/${googleAccountId}`,
+    readMask: "name,title,metadata",
   });
 
-  return response.data.locations || [];
+  return data.locations || [];
 };
 
 const getReviews = async (auth, locationId) => {
@@ -150,9 +163,8 @@ const fetchGoogleInsights = async (auth, locationId, days = 30) => {
         continue;
       }
 
-      metrics[metricTimeSeries.dailyMetric] = formatMetricSeries(
-        metricTimeSeries,
-      );
+      metrics[metricTimeSeries.dailyMetric] =
+        formatMetricSeries(metricTimeSeries);
     }
   }
 
@@ -173,6 +185,7 @@ const fetchGoogleInsights = async (auth, locationId, days = 30) => {
 
 module.exports = {
   fetchGoogleInsights,
+  getAccounts,
   getLocations,
   getReviews,
   normalizeLocationId,

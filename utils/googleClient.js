@@ -32,8 +32,12 @@ const syncStoredTokens = async (business, authClient, accessTokenResponse) => {
 };
 
 const getValidAuthClient = async (userId) => {
-  const business = await Business.findOne({ userId });
+  // const business = await Business.findOne({ userId });
 
+  const business = await Business.findOne({
+      _id:"69bd23ae5ddb4bc3728de422",
+    });
+    
   if (!business) {
     throw createError(404, "Business not found");
   }

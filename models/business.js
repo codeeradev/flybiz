@@ -8,6 +8,10 @@ const businessSchema = new mongoose.Schema(
       required: true,
     },
     businessName: { type: String },
+    googleBusinessName: { type: String },
+    googleConnected: { type: Boolean, default: false },
+    tokenExpiry: { type: Date },
+    lastGoogleSync: { type: Date },
     gstNumber: { type: String },
     companyLogo: { type: String },
     email: { type: String },
@@ -15,9 +19,16 @@ const businessSchema = new mongoose.Schema(
     address: { type: String },
     website: { type: String },
 
+    googlePlaceId: String,
     googleAccountId: String,
     googleLocationId: String,
-
+    googleLocations: [
+      {
+        googleLocationId: String,
+        googleBusinessName: String,
+        googlePlaceId: String,
+      },
+    ],
     accessToken: String,
     refreshToken: String,
 
