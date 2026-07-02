@@ -116,6 +116,7 @@ exports.getLocations = async (req, res) => {
     }
 
     if (business.googleLocations.length > 0 || type !== "refresh") {
+      console.log("i run", business.googleLocations);
       return res.json(
         business.googleLocations.map((location) => ({
           name: `locations/${location.googleLocationId}`,
@@ -130,6 +131,7 @@ exports.getLocations = async (req, res) => {
 
     const locations = await getLocations(auth, business.googleAccountId);
 
+    console.log("i run 2", locations);
     // Save latest locations in DB
     if (locations.length) {
       business.googleLocations = locations.map((location) => ({
