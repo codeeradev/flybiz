@@ -45,7 +45,7 @@ const getBusinessForUser = async (userId) => {
   // });
 
   const business = await Business.findOne({
-    _id:"69bd23ae5ddb4bc3728de422",
+    _id: "69bd23ae5ddb4bc3728de422",
   });
 
   if (!business) {
@@ -116,7 +116,16 @@ exports.getLocations = async (req, res) => {
     }
 
     if (business.googleLocations.length > 0 && type !== "refresh") {
-      return res.json(business.googleLocations);
+      return res.json(
+        business.googleLocations.map((location) => ({
+          name: `locations/${location.googleLocationId}`,
+          title: location.googleBusinessName,
+          metadata: {
+            placeId: location.googlePlaceId,
+          },
+          locationId: location.googleLocationId,
+        })),
+      );
     }
 
     const locations = await getLocations(auth, business.googleAccountId);
@@ -136,7 +145,7 @@ exports.getLocations = async (req, res) => {
       locations.map((location) => ({
         ...location,
         locationId: normalizeLocationId(location.name),
-      }))
+      })),
     );
   } catch (error) {
     return handleGoogleError(res, error);
@@ -270,8 +279,6 @@ exports.getAnalytics = async (req, res) => {
   }
 };
 
-
-
 exports.getActiveBusinesses = async (req, res) => {
   try {
     const activeBusinesses = await Business.find({
@@ -280,7 +287,7 @@ exports.getActiveBusinesses = async (req, res) => {
       googleLocationId: { $exists: true, $ne: null },
     });
 
-    return res.status(200).json({activeBusinesses: activeBusinesses});
+    return res.status(200).json({ activeBusinesses: activeBusinesses });
   } catch (error) {
     return handleGoogleError(res, error);
   }
