@@ -97,6 +97,7 @@ exports.connectGoogle = async (req, res) => {
 
 exports.getLocations = async (req, res) => {
   try {
+    const { type } = req.query;
     const userId = getUserIdFromRequest(req);
     const business = await getBusinessForUser(userId);
 
@@ -112,6 +113,10 @@ exports.getLocations = async (req, res) => {
 
       business.googleAccountId = accounts[0].name.split("/")[1];
       await business.save();
+    }
+
+    if (business.googleLocations.length > 0 && type !== "refresh") {
+      return res.json(business.googleLocations);
     }
 
     const locations = await getLocations(auth, business.googleAccountId);
