@@ -115,7 +115,7 @@ exports.getLocations = async (req, res) => {
       await business.save();
     }
 
-    if (business.googleLocations.length > 0 && type !== "refresh") {
+    if (business.googleLocations.length > 0 || type !== "refresh") {
       return res.json(
         business.googleLocations.map((location) => ({
           name: `locations/${location.googleLocationId}`,
