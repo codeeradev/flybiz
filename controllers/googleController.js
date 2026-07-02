@@ -233,3 +233,17 @@ exports.getAnalytics = async (req, res) => {
     return handleGoogleError(res, error);
   }
 };
+
+exports.getActiveBusinesses = async (req, res) => {
+  try {
+    const activeBusinesses = await Business.find({
+      accessToken: { $exists: true, $ne: null },
+      refreshToken: { $exists: true, $ne: null },
+      googleLocationId: { $exists: true, $ne: null },
+    });
+
+    return res.json(activeBusinesses);
+  } catch (error) {
+    return handleGoogleError(res, error);
+  }
+};
