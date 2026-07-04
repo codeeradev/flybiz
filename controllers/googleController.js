@@ -80,6 +80,20 @@ const parseAnalyticsDays = (value) => {
   return days;
 };
 
+exports.checkGoogleStatus = async (req, res) => {
+  try {
+    const userId = getUserIdFromRequest(req);
+    const business = await getBusinessForUser(userId);
+
+    return res.json({
+      googleConnected: business.googleConnected || false,
+      googleBusinessName: business.googleBusinessName || "",
+    });
+  } catch (error) {
+    return handleGoogleError(res, error);
+  }
+};
+
 exports.connectGoogle = async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);
@@ -178,6 +192,8 @@ exports.googleCallback = async (req, res) => {
     if (tokens.access_token) {
       business.accessToken = tokens.access_token;
     }
+
+    business.googleConnected = true;
 
     await business.save();
 
