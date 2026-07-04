@@ -9,10 +9,12 @@ const {
   googleCallback,
   replyToReview,
   selectLocation,
+  checkGoogleStatus,
   getActiveBusinesses
 } = require("../controllers/googleController");
 const verifyToken = require("../middleware/authToken");
 
+router.get("/check-status", verifyToken, checkGoogleStatus);
 router.get("/connect", verifyToken, connectGoogle);
 router.get("/callback", googleCallback);
 router.get("/locations", verifyToken, getLocations);
