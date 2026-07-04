@@ -19,6 +19,10 @@ const businessSchema = new mongoose.Schema(
     address: { type: String },
     website: { type: String },
 
+    googleUserId: String,
+    googleUserName: String,
+    googleEmail: String,
+    googleProfileImage: String,
     googlePlaceId: String,
     googleAccountId: String,
     googleLocationId: String,

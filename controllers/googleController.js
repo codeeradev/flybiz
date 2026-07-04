@@ -1,6 +1,7 @@
 const Business = require("../models/business");
 const {
   getAuthUrl,
+  getGoogleProfile,
   getTokens,
   verifyAuthState,
 } = require("../utils/googleAuth");
@@ -88,6 +89,10 @@ exports.checkGoogleStatus = async (req, res) => {
     return res.json({
       googleConnected: business.googleConnected || false,
       googleBusinessName: business.googleBusinessName || "",
+      googleUserId: business.googleUserId || "",
+      googleUserName: business.googleUserName || "",
+      googleEmail: business.googleEmail || "",
+      googleProfileImage: business.googleProfileImage || "",
     });
   } catch (error) {
     return handleGoogleError(res, error);
@@ -129,10 +134,7 @@ exports.getLocations = async (req, res) => {
       await business.save();
     }
 
-    if (business.googleLocations.length > 0 
-      || type !== "refresh"
-    ) 
-      {
+    if (business.googleLocations.length > 0 || type !== "refresh") {
       console.log("i run", business.googleLocations);
       return res.json(
         business.googleLocations.map((location) => ({
@@ -176,6 +178,9 @@ exports.googleCallback = async (req, res) => {
     const { code, state } = req.query;
     const { userId } = verifyAuthState(state);
     const tokens = await getTokens(code);
+    const profile = await getGoogleProfile(tokens);
+
+    console.log(profile);
     const business = await getBusinessForUser(userId);
 
     console.log("Google callback received for user:", userId);
@@ -193,6 +198,10 @@ exports.googleCallback = async (req, res) => {
       business.accessToken = tokens.access_token;
     }
 
+    business.googleUserId = profile.id;
+    business.googleUserName = profile.name;
+    business.googleEmail = profile.email;
+    business.googleProfileImage = profile.picture;
     business.googleConnected = true;
 
     await business.save();

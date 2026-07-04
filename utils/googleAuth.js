@@ -1,8 +1,12 @@
 const jwt = require("jsonwebtoken");
 const { google } = require("googleapis");
 
-const GOOGLE_BUSINESS_SCOPE =
-  "https://www.googleapis.com/auth/business.manage";
+const GOOGLE_BUSINESS_SCOPE = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/business.manage",
+  ];
 const GOOGLE_STATE_PURPOSE = "google-oauth-connect";
 
 const createError = (status, message) => {
@@ -82,9 +86,23 @@ const getAuthUrl = (userId) => {
   return oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: [GOOGLE_BUSINESS_SCOPE],
+    scope: GOOGLE_BUSINESS_SCOPE,
     state: signAuthState(userId),
   });
+};
+
+const getGoogleProfile = async (tokens) => {
+  const oauth2Client = createOAuth2Client();
+
+  oauth2Client.setCredentials(tokens);
+
+  const oauth2 = google.oauth2("v2");
+
+  const { data } = await oauth2.userinfo.get({
+    auth: oauth2Client,
+  });
+
+  return data;
 };
 
 const getTokens = async (code) => {
@@ -103,4 +121,5 @@ module.exports = {
   getAuthUrl,
   getTokens,
   verifyAuthState,
+  getGoogleProfile
 };
