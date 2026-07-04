@@ -116,7 +116,7 @@ exports.getLocations = async (req, res) => {
     }
 
     if (business.googleLocations.length > 0 
-      // || type !== "refresh"
+      || type !== "refresh"
     ) 
       {
       console.log("i run", business.googleLocations);
