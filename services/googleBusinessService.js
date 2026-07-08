@@ -103,12 +103,12 @@ const getLocations = async (auth, googleAccountId) => {
     auth,
   });
 
-  console.log("businessInfo:", businessInfo);
   const { data } = await businessInfo.accounts.locations.list({
     parent: `accounts/${googleAccountId}`,
     readMask: "name,title,metadata",
+    pageSize: 100,
   });
-
+console.log("data:", data);
   return data.locations || [];
 };
 
