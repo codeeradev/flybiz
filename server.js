@@ -20,6 +20,7 @@ const imageRoutes = require("./routes/imageRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
 const googleRoutes = require("./routes/googleRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const metaRoutes = require("./routes/metaRoutes");
 
 app.get("/", (req, res) => {
   res.send("FLyBiz api is running ...");
@@ -34,6 +35,7 @@ app.use("/ai", imageRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/google", googleRoutes);
 app.use("/dashboard", dashboardRoutes);
+app.use("/meta", metaRoutes);
 
 const startServer = async () => {
   const mongoConnection = await connectDb();
