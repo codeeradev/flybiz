@@ -16,10 +16,6 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
-    facebookUserToken: {
-      type: String,
-      default: null,
-    },
 
     role: {
       type: String,
@@ -28,6 +24,11 @@ const userSchema = new mongoose.Schema(
     },
     
     facebookPageId: {
+      type: String,
+      default: null,
+    },
+
+    facebookUserToken: {
       type: String,
       default: null,
     },

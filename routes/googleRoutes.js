@@ -10,7 +10,8 @@ const {
   replyToReview,
   selectLocation,
   checkGoogleStatus,
-  getActiveBusinesses
+  getActiveBusinesses,
+  googleSignOut
 } = require("../controllers/googleController");
 const verifyToken = require("../middleware/authToken");
 
@@ -20,6 +21,7 @@ router.get("/callback", googleCallback);
 router.get("/locations", verifyToken, getLocations);
 router.post("/location", verifyToken, selectLocation);
 router.get("/active-businesses", getActiveBusinesses);
+router.get("/sign-out", verifyToken, googleSignOut);
 router.get("/reviews", verifyToken, getReviews);
 router.post("/reviews/reply", verifyToken, replyToReview);
 router.get("/analytics", verifyToken, getAnalytics);

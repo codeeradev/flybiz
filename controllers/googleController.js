@@ -206,7 +206,7 @@ exports.googleCallback = async (req, res) => {
 
     await business.save();
 
-    return res.json({ message: "Google connected" });
+    return res.redirect("flybiz://google-connected");
   } catch (error) {
     return handleGoogleError(res, error);
   }
@@ -318,6 +318,45 @@ exports.getActiveBusinesses = async (req, res) => {
     });
 
     return res.status(200).json({ activeBusinesses: activeBusinesses });
+  } catch (error) {
+    return handleGoogleError(res, error);
+  }
+};
+
+exports.googleSignOut = async (req, res) => {
+  try {
+    const userId = getUserIdFromRequest(req);
+    const business = await getBusinessForUser(userId);
+
+    business.googleConnected = false;
+
+    business.googleBusinessName = null;
+
+    business.googleUserId = null;
+    business.googleUserName = null;
+    business.googleEmail = null;
+    business.googleProfileImage = null;
+
+    business.googlePlaceId = null;
+    business.googleAccountId = null;
+    business.googleLocationId = null;
+
+    business.googleLocations = [];
+
+    business.accessToken = null;
+    business.refreshToken = null;
+
+    business.tokenExpiry = null;
+    business.lastGoogleSync = null;
+
+    business.averageRating = null;
+    business.totalReviews = null;
+
+    await business.save();
+
+    return res.json({
+      message: "Google account disconnected successfully",
+    });
   } catch (error) {
     return handleGoogleError(res, error);
   }
