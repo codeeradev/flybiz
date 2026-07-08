@@ -134,8 +134,9 @@ exports.getLocations = async (req, res) => {
       await business.save();
     }
 
-    if (business.googleLocations.length > 0 || type === "refresh") {
-      console.log("i run", business.googleLocations);
+    // Use DB only when refresh is NOT requested
+    // and DB already has locations.
+    if (type !== "refresh" && business.googleLocations.length > 0) {
       return res.json(
         business.googleLocations.map((location) => ({
           name: `locations/${location.googleLocationId}`,
@@ -148,10 +149,14 @@ exports.getLocations = async (req, res) => {
       );
     }
 
+    // Either:
+    // 1. type === "refresh"
+    // OR
+    // 2. DB is empty
+    // => Fetch from Google
     const locations = await getLocations(auth, business.googleAccountId);
 
-    console.log("i run 2", locations);
-    // Save latest locations in DB
+    // Save latest locations
     if (locations.length) {
       business.googleLocations = locations.map((location) => ({
         googleLocationId: normalizeLocationId(location.name),
