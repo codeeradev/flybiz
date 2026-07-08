@@ -41,13 +41,13 @@ const getUserIdFromRequest = (req) => {
 };
 
 const getBusinessForUser = async (userId) => {
-  // const business = await Business.findOne({
-  //   userId,
-  // });
-
   const business = await Business.findOne({
-    _id: "69bd23ae5ddb4bc3728de422",
+    userId,
   });
+
+  // const business = await Business.findOne({
+  //   _id: "69bd23ae5ddb4bc3728de422",
+  // });
 
   if (!business) {
     throw createError(404, "Business not found");
@@ -187,8 +187,6 @@ exports.googleCallback = async (req, res) => {
 
     console.log(profile);
     const business = await getBusinessForUser(userId);
-
-    console.log("Google callback received for user:", userId);
 
     if (!tokens.access_token && !tokens.refresh_token) {
       throw createError(400, "Google did not return any usable tokens");
