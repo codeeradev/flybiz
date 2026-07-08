@@ -4,7 +4,7 @@ const router = express.Router();
 const { connectFacebook, facebookCallback } = require("../controllers/metaController");
 
 router.get("/connect", connectFacebook);
-router.get("/facebook-callback", facebookCallback);
+router.get("/callback", facebookCallback);
 // router.get("/pages", metaController.getPages);
 
 // router.get("/instagram/:pageId", metaController.getInstagramAccount);
