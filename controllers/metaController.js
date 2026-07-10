@@ -13,8 +13,9 @@ GET FACEBOOK CONNECT
 exports.connectFacebook = async (req, res) => {
   const APP_ID = process.env.META_APP_ID;
   const REDIRECT_URI = process.env.META_REDIRECT_URI;
-
+console.log("req.user", req.user)
   const state = req.user.toString();
+  console.log("state", state)
   const scope = [
     "pages_show_list",
     "pages_read_engagement",
@@ -55,9 +56,9 @@ exports.facebookCallback = async (req, res) => {
     );
 
     const userAccessToken = response.data.access_token;
-console.log(state)
+console.log("state", state)
     const userId = state;
-console.log(userId)
+console.log("userId", userId)
     await User.findByIdAndUpdate(userId, {
       facebookUserToken: userAccessToken,
     });
