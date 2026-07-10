@@ -13,8 +13,8 @@ GET FACEBOOK CONNECT
 exports.connectFacebook = async (req, res) => {
   const APP_ID = process.env.META_APP_ID;
   const REDIRECT_URI = process.env.META_REDIRECT_URI;
-console.log("req.user", req.user)
-  const state = req.user.toString();
+console.log("req.user", req.user._id)
+  const state = req.user._id.toString();
   console.log("state", state)
   const scope = [
     "pages_show_list",
