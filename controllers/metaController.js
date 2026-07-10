@@ -13,14 +13,15 @@ GET FACEBOOK CONNECT
 exports.connectFacebook = async (req, res) => {
   const APP_ID = process.env.META_APP_ID;
   const REDIRECT_URI = process.env.META_REDIRECT_URI;
-console.log("req.user", req.user._id)
   const state = req.user._id.toString();
-  console.log("state", state)
   const scope = [
     "pages_show_list",
     "pages_read_engagement",
+    "pages_read_user_content",
     "pages_manage_posts",
     "instagram_basic",
+    "read_insights",
+    "business_management",
     "instagram_content_publish",
     "instagram_manage_comments",
     "instagram_manage_insights",
@@ -56,9 +57,7 @@ exports.facebookCallback = async (req, res) => {
     );
 
     const userAccessToken = response.data.access_token;
-console.log("state", state)
     const userId = state;
-console.log("userId", userId)
     await User.findByIdAndUpdate(userId, {
       facebookUserToken: userAccessToken,
     });
@@ -77,24 +76,27 @@ exports.getPages = async (req, res) => {
   try {
     const user = await User.findById(req.user).select("facebookUserToken");
 
+    console.log("user", user);
+
     if (!user?.facebookUserToken) {
       return res.status(400).json({
         success: false,
         message: "Facebook not connected",
       });
     }
-
+    console.log("user.facebookUserToken", user.facebookUserToken);
     const { data } = await axios.get(
       "https://graph.facebook.com/v23.0/me/accounts",
       {
         params: {
-          fields:
-            "id,name,category,picture{url},access_token,followers_count,fan_count,instagram_business_account{id,username}",
+          // fields:
+            // "id,name,category,picture{url},access_token,followers_count,fan_count,instagram_business_account{id,username}",
+            // "id,name,category,picture,access_token,instagram_business_account{id,username}",
           access_token: user.facebookUserToken,
         },
       },
     );
-
+    console.log("data", data);
     return res.json({
       success: true,
       pages: data.data,
