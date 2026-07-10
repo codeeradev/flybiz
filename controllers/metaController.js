@@ -7,28 +7,14 @@ const BASE_URL = "https://graph.facebook.com/v19.0";
 const USER_TOKEN = process.env.USER_ACCESS_TOKEN;
 
 /*
-GET FACEBOOK PAGES
+GET FACEBOOK CONNECT
 */
-exports.getPages = async (req, res) => {
-  try {
-    const user = await User.findById(req.user);
-
-    const response = await axios.get(`${BASE_URL}/me/accounts`, {
-      params: {
-        access_token: user.facebookUserToken,
-      },
-    });
-
-    res.json(response.data);
-  } catch (error) {
-    res.status(500).json(error.response?.data || error.message);
-  }
-};
 
 exports.connectFacebook = async (req, res) => {
   const APP_ID = process.env.META_APP_ID;
   const REDIRECT_URI = process.env.META_REDIRECT_URI;
 
+  const state = req.user.toString();
   const scope = [
     "pages_show_list",
     "pages_read_engagement",
@@ -39,14 +25,18 @@ exports.connectFacebook = async (req, res) => {
     "instagram_manage_insights",
   ].join(",");
 
-  const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${APP_ID}&redirect_uri=${REDIRECT_URI}&scope=${scope}&response_type=code`;
+  const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${APP_ID}&redirect_uri=${REDIRECT_URI}&scope=${scope}&response_type=code&state=${state}`;
 
   res.json({ url });
 };
 
+/*
+GET FACEBOOK CONNECT
+*/
+
 exports.facebookCallback = async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
 
     const APP_ID = process.env.META_APP_ID;
     const APP_SECRET = process.env.META_APP_SECRET;
@@ -66,7 +56,7 @@ exports.facebookCallback = async (req, res) => {
 
     const userAccessToken = response.data.access_token;
 
-    const userId = req.user;
+    const userId = state;
 
     await User.findByIdAndUpdate(userId, {
       facebookUserToken: userAccessToken,
@@ -82,76 +72,196 @@ exports.facebookCallback = async (req, res) => {
   }
 };
 
-exports.getUserPages = async (req, res) => {
-  const { access_token } = req.body;
-
+exports.getPages = async (req, res) => {
   try {
-    const response = await axios.get(
-      `https://graph.facebook.com/v19.0/me/accounts`,
+    const user = await User.findById(req.user).select("facebookUserToken");
+
+    if (!user?.facebookUserToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Facebook not connected",
+      });
+    }
+
+    const { data } = await axios.get(
+      "https://graph.facebook.com/v23.0/me/accounts",
       {
         params: {
-          access_token: access_token,
+          fields:
+            "id,name,category,picture{url},access_token,followers_count,fan_count,instagram_business_account{id,username}",
+          access_token: user.facebookUserToken,
         },
       },
     );
 
-    res.json(response.data);
-  } catch (error) {
-    res.status(500).json(error.response?.data || error.message);
+    return res.json({
+      success: true,
+      pages: data.data,
+    });
+  } catch (err) {
+    console.log(err.response?.data || err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.response?.data?.error?.message || "Server Error",
+    });
   }
 };
 
 exports.savePage = async (req, res) => {
   try {
-    const userId = req.user;
-    const { pageId, pageToken } = req.body;
+    const { pageId } = req.body;
 
-    await User.findByIdAndUpdate(userId, {
-      facebookPageId: pageId,
-      facebookPageToken: pageToken,
-    });
+    const user = await User.findById(req.user).select("facebookUserToken");
 
-    res.json({
-      message: "Page connected successfully",
-    });
-  } catch (error) {
-    res.status(500).json(error.message);
-  }
-};
+    if (!user?.facebookUserToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Facebook not connected",
+      });
+    }
 
-exports.getInstagramFromPage = async (req, res) => {
-  const { pageId, pageToken } = req.body;
-
-  try {
-    const response = await axios.get(
-      `https://graph.facebook.com/v19.0/${pageId}`,
+    const { data: page } = await axios.get(
+      `https://graph.facebook.com/v23.0/${pageId}`,
       {
         params: {
-          fields: "instagram_business_account{id,username}",
-          access_token: pageToken,
+          fields: [
+            "id",
+            "name",
+            "category",
+            "picture{url}",
+            "access_token",
+            "instagram_business_account{id,username}",
+          ].join(","),
+
+          access_token: user.facebookUserToken,
         },
       },
     );
 
-    res.json(response.data);
-  } catch (error) {
-    res.status(500).json(error.response?.data || error.message);
+    let instagram = null;
+
+    if (page.instagram_business_account?.id) {
+      const { data } = await axios.get(
+        `https://graph.facebook.com/v23.0/${page.instagram_business_account.id}`,
+        {
+          params: {
+            fields:
+              "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
+
+            access_token: page.access_token,
+          },
+        },
+      );
+
+      instagram = data;
+    }
+
+    await User.findByIdAndUpdate(req.user, {
+      facebookPageId: page.id,
+      facebookPageName: page.name,
+      facebookPageCategory: page.category,
+      facebookPagePicture: page.picture?.data?.url,
+      facebookPageToken: page.access_token,
+
+      instagramId: instagram?.id || null,
+      instagramUsername: instagram?.username || null,
+      instagramName: instagram?.name || null,
+      instagramProfilePicture: instagram?.profile_picture_url || null,
+    });
+
+    return res.json({
+      success: true,
+      message: "Page Connected",
+
+      facebook: {
+        id: page.id,
+        name: page.name,
+        picture: page.picture?.data?.url,
+        category: page.category,
+      },
+
+      instagram,
+    });
+  } catch (err) {
+    console.log(err.response?.data || err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.response?.data?.error?.message || "Server Error",
+    });
   }
 };
 
-exports.saveInstagram = async (req, res) => {
+exports.getProfile = async (req, res) => {
   try {
-    const userId = req.user;
-    const { instagramId } = req.body;
+    const user = await User.findById(req.user).select(
+      "facebookPageId facebookPageToken instagramId",
+    );
 
-    await User.findByIdAndUpdate(userId, {
-      instagramId: instagramId,
+    if (!user?.facebookPageId || !user?.facebookPageToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Facebook page not connected",
+      });
+    }
+
+    const pagePromise = axios.get(`${BASE_URL}/${user.facebookPageId}`, {
+      params: {
+        fields: [
+          "id",
+          "name",
+          "username",
+          "picture{url}",
+          "fan_count",
+          "followers_count",
+          "verification_status",
+          "category",
+          "category_list",
+          "about",
+          "link",
+          "website",
+        ].join(","),
+        access_token: user.facebookPageToken,
+      },
     });
 
-    res.json({
-      message: "Instagram connected",
+    let instagramPromise = null;
+
+    if (user.instagramId) {
+      instagramPromise = axios.get(`${BASE_URL}/${user.instagramId}`, {
+        params: {
+          fields: [
+            "id",
+            "username",
+            "name",
+            "profile_picture_url",
+            "followers_count",
+            "follows_count",
+            "media_count",
+            "biography",
+            "website",
+          ].join(","),
+          access_token: user.facebookPageToken,
+        },
+      });
+    }
+
+    const [pageRes, igRes] = await Promise.all([pagePromise, instagramPromise]);
+
+    return res.json({
+      success: true,
+
+      facebook: pageRes?.data || null,
+
+      instagram: igRes?.data || null,
     });
-  } catch (error) {
-    res.status(500).json(error.message);
+  } catch (err) {
+    console.log(err.response?.data || err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.response?.data?.error?.message || "Server Error",
+    });
   }
 };
