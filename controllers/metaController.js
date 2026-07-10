@@ -55,9 +55,9 @@ exports.facebookCallback = async (req, res) => {
     );
 
     const userAccessToken = response.data.access_token;
-
+console.log(state)
     const userId = state;
-
+console.log(userId)
     await User.findByIdAndUpdate(userId, {
       facebookUserToken: userAccessToken,
     });
