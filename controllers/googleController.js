@@ -1,4 +1,6 @@
 const Business = require("../models/business");
+const User = require("../models/user");
+
 const {
   getAuthUrl,
   getGoogleProfile,
@@ -86,7 +88,11 @@ exports.checkGoogleStatus = async (req, res) => {
     const userId = getUserIdFromRequest(req);
     const business = await getBusinessForUser(userId);
 
+    const user = await User.findById(userId);
+
     return res.json({
+      metaConnected: Boolean(user?.facebookUserToken?.trim()),
+
       googleConnected: business.googleConnected || false,
       googleBusinessName: business.googleBusinessName || "",
       googleUserId: business.googleUserId || "",
