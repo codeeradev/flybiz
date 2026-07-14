@@ -73,7 +73,7 @@ exports.facebookCallback = async (req, res) => {
 
     // Access token intentionally NOT returned to the client — it never needs
     // to leave the server once stored against the user.
-    res.json({ success: true, message: "Facebook connected successfully" });
+    return res.redirect("flybiz://meta-connected");
   } catch (error) {
     console.log("Error in facebook callback:", error.response?.data || error);
     res.status(500).json({ success: false, message: "Error in facebook callback" });
