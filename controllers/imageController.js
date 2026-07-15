@@ -73,27 +73,27 @@ exports.generateImage = async (req, res) => {
     }
 
     if (generationType === "video") {
-      // const videoUrl = await generateGeminiVideo({
-      //   prompt,
-      //   files,
-      // });
+      const videoUrl = await generateGeminiVideo({
+        prompt,
+        files,
+      });
 
-      const videoBase64 = await getDummyVideoBase64();
-      const videoUrl = buildDataUrl(
-        getMimeTypeFromPath(DUMMY_VIDEO_PATH),
-        videoBase64,
-      );
+      // const videoBase64 = await getDummyVideoBase64();
+      // const videoUrl = buildDataUrl(
+      //   getMimeTypeFromPath(DUMMY_VIDEO_PATH),
+      //   videoBase64,
+      // );
 
       return res.status(200).json({ videoUrl });
     }
 
-    // const { imageBase64, mimeType } = await generateGeminiImage({
-    //   prompt,
-    //   files,
-    // });
+    const { imageBase64, mimeType } = await generateGeminiImage({
+      prompt,
+      files,
+    });
 
-    const imageBase64 = await getDummyImageBase64();
-    const mimeType = getMimeTypeFromPath(DUMMY_IMAGE_PATH);
+    // const imageBase64 = await getDummyImageBase64();
+    // const mimeType = getMimeTypeFromPath(DUMMY_IMAGE_PATH);
 
     return res.status(200).json({
       imageBase64: buildDataUrl(mimeType, imageBase64),
