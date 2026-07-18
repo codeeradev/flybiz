@@ -37,6 +37,18 @@ app.use("/google", googleRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/meta", metaRoutes);
 
+app.get("/whatsapp/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === process.env.WAB_VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+
+  res.sendStatus(403);
+});
+
 const startServer = async () => {
   const mongoConnection = await connectDb();
 
