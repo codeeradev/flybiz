@@ -37,7 +37,7 @@ app.use("/google", googleRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/meta", metaRoutes);
 
-app.get("/whatsapp/webhook", (req, res) => {
+app.get("/whatsapp/webhook/verify", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
