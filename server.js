@@ -50,15 +50,13 @@ app.get("/whatsapp/webhook", (req, res) => {
 });
 
 app.post("/whatsapp/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
 
-  if (mode === "subscribe" && token === process.env.WAB_VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
-  }
+    console.log(JSON.stringify(req.body, null, 2));
 
-  res.sendStatus(403);
+  // Process incoming messages here
+
+  res.sendStatus(200);
+
 });
 
 
