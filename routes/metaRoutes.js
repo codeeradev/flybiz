@@ -12,7 +12,11 @@ const {
   getDashboardOverview,
   getDashboardPosts,
   getDashboardMessages,
+  uploadFacebookPost,
+  uploadInstagramPost
 } = require("../controllers/metaController");
+
+const upload = require("../middleware/multer");
 
 router.get("/connect", verifyToken, connectFacebook);
 router.get("/callback", facebookCallback);
@@ -26,6 +30,9 @@ router.get("/profile", verifyToken, getProfile);
 router.get("/dashboard", verifyToken, getDashboardOverview); // KPI cards + 4 trend charts
 router.get("/dashboard/posts", verifyToken, getDashboardPosts); // posts table + top posts + reels
 router.get("/dashboard/messages", verifyToken, getDashboardMessages); // page messages + unread
+
+router.post("/post/facebook", verifyToken, upload.facebook, uploadFacebookPost);
+router.post("/post/instagram",verifyToken, upload.facebook, uploadInstagramPost);
 
 // router.get("/pages", metaController.getPages);
 

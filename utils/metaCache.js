@@ -29,8 +29,14 @@ function del(key) {
   store.delete(key);
 }
 
+function delPrefix(prefix) {
+  for (const key of store.keys()) {
+    if (key === prefix || key.startsWith(`${prefix}:`)) store.delete(key);
+  }
+}
+
 function memoKey(...parts) {
   return parts.filter(Boolean).join(":");
 }
 
-module.exports = { get, set, del, memoKey };
+module.exports = { get, set, del, delPrefix, memoKey };

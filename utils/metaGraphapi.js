@@ -27,9 +27,24 @@
 //   causing the "(#100) There cannot be more than 30 days..." error).
 //   fetchIgReachTimeSeries() below chunks the requested range into
 //   <=30-day windows and stitches the results back together.
+//
+//   PUBLISHING (added below): binary-only, no hosted-URL inputs anywhere
+//   users touch. Media comes from the device gallery, so every publish
+//   helper takes a Buffer straight from multer, not a URL:
+//     - FB photos/videos -> multipart `source` field (standard Graph API
+//       upload, same as any file upload elsewhere on the web)
+//     - FB Reels          -> resumable protocol: start -> raw binary POST
+//       to rupload.facebook.com -> finish
+//     - IG video/Reels    -> same shape as FB Reels: create a container
+//       with upload_type=resumable, POST raw binary to
+//       rupload.facebook.com/ig-api-upload/..., poll, then publish
+//     - IG images          -> the one exception. Meta's container API only
+//       accepts `image_url` for photos; there is no binary upload path
+//       for IG images. See uploadBufferToPublicUrl()'s doc comment below.
 // ====================================================================
 
 const axios = require("axios");
+const FormData = require("form-data");
 
 // Pin ONE version across the whole app. Bump it here only.
 const GRAPH_VERSION = "v25.0";
@@ -274,6 +289,253 @@ function igInsightMetricsFor(_mediaProductType) {
   return "reach,saved,shares,views,total_interactions";
 }
 
+/* ================================================================== */
+/*  PUBLISHING — binary only, no hosted-URL inputs                     */
+/* ================================================================== */
+/*
+  Every function below takes a Buffer (straight from multer's
+  memoryStorage on the route) instead of a URL. Two different transport
+  mechanisms are involved depending on media type:
+
+    - Small/standard uploads (FB photos, FB standard videos) go as
+      multipart/form-data via the `form-data` package, same as any file
+      upload to a web API.
+    - Reels (FB and IG) and IG videos go through Meta's resumable upload
+      protocol: a `start`/container call on graph.facebook.com returns an
+      id, then the raw file bytes are POSTed directly to
+      rupload.facebook.com with Authorization/offset/file_size headers
+      (no multipart wrapper), then a `finish`/publish call closes it out.
+      This is also the correct path for large files since it's designed
+      to be resumable, unlike the plain multipart upload below.
+*/
+
+/* ---------------- Facebook Page posts ---------------- */
+
+/**
+ * Text (or link) post to a Page's feed. No media involved.
+ * POST /{page-id}/feed
+ */
+async function publishFacebookText(pageId, accessToken, { message, link } = {}) {
+  const { data } = await axios.post(`${BASE_URL}/${pageId}/feed`, null, {
+    params: { message, link, access_token: accessToken },
+  });
+  return data; // { id: "<post_id>" }
+}
+
+/**
+ * Single photo post from a binary buffer.
+ * POST /{page-id}/photos, multipart `source` field.
+ */
+async function publishFacebookPhoto(pageId, accessToken, { buffer, filename, mimetype, caption, published = true } = {}) {
+  const form = new FormData();
+  form.append("source", buffer, { filename: filename || "photo.jpg", contentType: mimetype || "image/jpeg" });
+  if (caption) form.append("caption", caption);
+  form.append("published", String(published));
+  form.append("access_token", accessToken);
+
+  const { data } = await axios.post(`${BASE_URL}/${pageId}/photos`, form, {
+    headers: form.getHeaders(),
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return data; // { id: "<photo_id>", post_id: "<page-id>_<post_id>" }
+}
+
+/**
+ * Standard (non-Reel) Page video post from a binary buffer.
+ * POST /{page-id}/videos, multipart `source` field — a single request,
+ * fine for typical phone-recorded clips. Graph API's single-request cap
+ * is roughly 1GB / 20 minutes; anything larger needs Meta's general
+ * Resumable Upload API (start/transfer/finish over multiple chunks),
+ * which isn't implemented here since Reels already needed the resumable
+ * path below and standard video posts rarely hit that ceiling.
+ */
+async function publishFacebookVideo(pageId, accessToken, { buffer, filename, mimetype, title, description } = {}) {
+  const form = new FormData();
+  form.append("source", buffer, { filename: filename || "video.mp4", contentType: mimetype || "video/mp4" });
+  if (title) form.append("title", title);
+  if (description) form.append("description", description);
+  form.append("access_token", accessToken);
+
+  const { data } = await axios.post(`${BASE_URL}/${pageId}/videos`, form, {
+    headers: form.getHeaders(),
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return data; // { id: "<video_id>" }
+}
+
+/**
+ * Page Reel from a binary buffer. Reels can't use the plain /videos
+ * multipart upload above — Meta requires the resumable protocol via the
+ * dedicated `video_reels` edge:
+ *   1. start  -> POST /{page-id}/video_reels?upload_phase=start
+ *                returns { video_id, upload_url }
+ *   2. upload -> POST the raw file bytes straight to
+ *                https://rupload.facebook.com/video-upload/<version>/<video_id>
+ *                with Authorization/offset/file_size headers (no
+ *                multipart wrapper — the body IS the file)
+ *   3. finish -> POST /{page-id}/video_reels?upload_phase=finish&video_state=PUBLISHED
+ */
+async function publishFacebookReel(pageId, accessToken, { buffer, description } = {}) {
+  const { data: start } = await axios.post(`${BASE_URL}/${pageId}/video_reels`, null, {
+    params: { upload_phase: "start", access_token: accessToken },
+  });
+
+  const videoId = start.video_id;
+  const uploadUrl = start.upload_url || `https://rupload.facebook.com/video-upload/${GRAPH_VERSION}/${videoId}`;
+
+  await axios.post(uploadUrl, buffer, {
+    headers: {
+      Authorization: `OAuth ${accessToken}`,
+      offset: "0",
+      file_size: String(buffer.length),
+      "Content-Type": "application/octet-stream",
+    },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+
+  const { data: finish } = await axios.post(`${BASE_URL}/${pageId}/video_reels`, null, {
+    params: {
+      upload_phase: "finish",
+      video_id: videoId,
+      video_state: "PUBLISHED",
+      description,
+      access_token: accessToken,
+    },
+  });
+
+  return { video_id: videoId, ...finish }; // finish.success === true once processed
+}
+
+/* ---------------- Instagram content publishing ---------------- */
+/*
+  IG's publishing flow is always two calls, regardless of media type:
+    1. Create a container    -> POST /{ig-id}/media        => { id: containerId }
+    2. Publish the container -> POST /{ig-id}/media_publish?creation_id=...
+
+  Video/Reels containers are processed asynchronously, so
+  pollIgContainerStatus() waits for status_code to leave IN_PROGRESS
+  before publishing.
+
+  Rate limit: the Content Publishing API caps most accounts around 25-100
+  published posts per rolling 24h window depending on the account — this
+  surfaces as a normal Graph API error, so no special handling is needed
+  here beyond letting the error bubble up.
+*/
+
+/**
+ * Creates a media container from a hosted URL. Still needed for:
+ *   - IG image posts (Meta requires `image_url` — see
+ *     uploadBufferToPublicUrl below for why)
+ *   - the CAROUSEL parent container, which only takes `children` ids and
+ *     never touches media directly
+ */
+async function createIgMediaContainer(igId, accessToken, params = {}) {
+  const { data } = await axios.post(`${BASE_URL}/${igId}/media`, null, {
+    params: { ...params, access_token: accessToken },
+  });
+  return data; // { id: "<container_id>" }
+}
+
+/**
+ * Creates a container for a binary (resumable) video/Reel upload — no
+ * URL involved. `mediaType` is "VIDEO" (feed video / carousel video item)
+ * or "REELS". Follow with uploadIgResumableBinary() to send the bytes.
+ * POST /{ig-id}/media?upload_type=resumable&media_type=...
+ */
+async function createIgResumableContainer(igId, accessToken, { mediaType, caption, isCarouselItem } = {}) {
+  const { data } = await axios.post(`${BASE_URL}/${igId}/media`, null, {
+    params: {
+      upload_type: "resumable",
+      media_type: mediaType,
+      caption,
+      is_carousel_item: isCarouselItem || undefined,
+      access_token: accessToken,
+    },
+  });
+  return data; // { id: "<container_id>" }
+}
+
+/**
+ * Sends the raw video bytes for a resumable IG container.
+ * POST https://rupload.facebook.com/ig-api-upload/<version>/<container-id>
+ * with Authorization/offset/file_size headers — same shape as the FB
+ * Reels binary upload above, just a different host.
+ */
+async function uploadIgResumableBinary(containerId, accessToken, buffer) {
+  const url = `https://rupload.facebook.com/ig-api-upload/${GRAPH_VERSION}/${containerId}`;
+  const { data } = await axios.post(url, buffer, {
+    headers: {
+      Authorization: `OAuth ${accessToken}`,
+      offset: "0",
+      file_size: String(buffer.length),
+      "Content-Type": "application/octet-stream",
+    },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return data; // { success: true, message: "Upload successful." }
+}
+
+/**
+ * Polls a container's processing status until it's FINISHED (ready to
+ * publish) or ERROR. Video/Reels containers can take anywhere from a few
+ * seconds to a couple of minutes depending on length/size.
+ */
+async function pollIgContainerStatus(containerId, accessToken, { timeoutMs = 120_000, intervalMs = 3000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const { data } = await axios.get(`${BASE_URL}/${containerId}`, {
+      params: { fields: "status_code,status", access_token: accessToken },
+    });
+
+    if (data.status_code === "FINISHED") return data;
+    if (data.status_code === "ERROR") {
+      const err = new Error(data.status || "Instagram media container failed to process");
+      err.igContainerStatus = data;
+      throw err;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+
+  throw new Error("Timed out waiting for Instagram media container to finish processing");
+}
+
+/**
+ * Publishes a ready container to the account's feed.
+ * POST /{ig-id}/media_publish
+ */
+async function publishIgContainer(igId, accessToken, creationId) {
+  const { data } = await axios.post(`${BASE_URL}/${igId}/media_publish`, null, {
+    params: { creation_id: creationId, access_token: accessToken },
+  });
+  return data; // { id: "<ig_media_id>" }
+}
+
+/**
+ * THE ONE REMAINING URL SEAM — Instagram's container API only accepts
+ * `image_url` for photo posts; unlike video/Reels, there is no binary
+ * upload path for IG images (confirmed against Meta's current Content
+ * Publishing docs). This app's public API still only ever accepts binary
+ * from the client — this function is the internal bridge that takes a
+ * device-uploaded image buffer and makes it briefly reachable at a URL
+ * so Meta can fetch it.
+ *
+ * Intentionally left unimplemented: wire this to whichever object
+ * storage this app uses (S3, Cloudinary, GCS, Firebase Storage, etc).
+ * Upload `buffer`, return a URL Meta's servers can reach, and optionally
+ * expire/delete the object once the post is published.
+ */
+async function uploadBufferToPublicUrl(_buffer, _filename, _mimetype) {
+  throw new Error(
+    "uploadBufferToPublicUrl() is not implemented — Instagram image posts require a public image_url on Meta's side. " +
+      "Wire this function up to your object storage (S3/Cloudinary/GCS/etc) to unblock IG image posts."
+  );
+}
+
 module.exports = {
   GRAPH_VERSION,
   BASE_URL,
@@ -287,4 +549,15 @@ module.exports = {
   fetchIgReachTimeSeries,
   fetchAllIgMediaInRange,
   igInsightMetricsFor,
+  // publishing
+  publishFacebookText,
+  publishFacebookPhoto,
+  publishFacebookVideo,
+  publishFacebookReel,
+  createIgMediaContainer,
+  createIgResumableContainer,
+  uploadIgResumableBinary,
+  pollIgContainerStatus,
+  publishIgContainer,
+  uploadBufferToPublicUrl,
 };

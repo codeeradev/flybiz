@@ -12,6 +12,16 @@ const {
   fetchIgReachTimeSeries,
   fetchAllIgMediaInRange,
   igInsightMetricsFor,
+  publishFacebookText,
+  publishFacebookPhoto,
+  publishFacebookVideo,
+  publishFacebookReel,
+  createIgMediaContainer,
+  createIgResumableContainer,
+  uploadIgResumableBinary,
+  pollIgContainerStatus,
+  publishIgContainer,
+  uploadBufferToPublicUrl,
 } = require("../utils/metaGraphapi.js");
 
 const cache = require("../utils/metaCache.js");
@@ -53,7 +63,12 @@ exports.facebookCallback = async (req, res) => {
 
     // Step 1: exchange the auth code for a short-lived user token (~1-2 hrs).
     const shortLived = await axios.get(`${BASE_URL}/oauth/access_token`, {
-      params: { client_id: APP_ID, client_secret: APP_SECRET, redirect_uri: REDIRECT_URI, code },
+      params: {
+        client_id: APP_ID,
+        client_secret: APP_SECRET,
+        redirect_uri: REDIRECT_URI,
+        code,
+      },
     });
 
     // Step 2: exchange it for a long-lived user token (~60 days). The Page
@@ -69,14 +84,18 @@ exports.facebookCallback = async (req, res) => {
       },
     });
 
-    await User.findByIdAndUpdate(state, { facebookUserToken: longLived.data.access_token });
+    await User.findByIdAndUpdate(state, {
+      facebookUserToken: longLived.data.access_token,
+    });
 
     // Access token intentionally NOT returned to the client — it never needs
     // to leave the server once stored against the user.
     return res.redirect("flybiz://meta-connected");
   } catch (error) {
     console.log("Error in facebook callback:", error.response?.data || error);
-    res.status(500).json({ success: false, message: "Error in facebook callback" });
+    res
+      .status(500)
+      .json({ success: false, message: "Error in facebook callback" });
   }
 };
 
@@ -88,7 +107,9 @@ exports.getPages = async (req, res) => {
   try {
     const user = await User.findById(req.user).select("facebookUserToken");
     if (!user?.facebookUserToken) {
-      return res.status(400).json({ success: false, message: "Facebook not connected" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Facebook not connected" });
     }
 
     const { data } = await axios.get(`${BASE_URL}/me/accounts`, {
@@ -102,7 +123,12 @@ exports.getPages = async (req, res) => {
     return res.json({ success: true, pages: data.data });
   } catch (err) {
     console.log(err.response?.data || err);
-    return res.status(500).json({ success: false, message: err.response?.data?.error?.message || "Server Error" });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: err.response?.data?.error?.message || "Server Error",
+      });
   }
 };
 
@@ -111,24 +137,37 @@ exports.savePage = async (req, res) => {
     const { pageId } = req.body;
     const user = await User.findById(req.user).select("facebookUserToken");
     if (!user?.facebookUserToken) {
-      return res.status(400).json({ success: false, message: "Facebook not connected" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Facebook not connected" });
     }
 
     const { data: page } = await axios.get(`${BASE_URL}/${pageId}`, {
       params: {
-        fields: ["id", "name", "category", "picture{url}", "access_token", "instagram_business_account{id,username}"].join(","),
+        fields: [
+          "id",
+          "name",
+          "category",
+          "picture{url}",
+          "access_token",
+          "instagram_business_account{id,username}",
+        ].join(","),
         access_token: user.facebookUserToken,
       },
     });
 
     let instagram = null;
     if (page.instagram_business_account?.id) {
-      const { data } = await axios.get(`${BASE_URL}/${page.instagram_business_account.id}`, {
-        params: {
-          fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
-          access_token: page.access_token,
+      const { data } = await axios.get(
+        `${BASE_URL}/${page.instagram_business_account.id}`,
+        {
+          params: {
+            fields:
+              "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
+            access_token: page.access_token,
+          },
         },
-      });
+      );
       instagram = data;
     }
 
@@ -149,12 +188,22 @@ exports.savePage = async (req, res) => {
     return res.json({
       success: true,
       message: "Page Connected",
-      facebook: { id: page.id, name: page.name, picture: page.picture?.data?.url, category: page.category },
+      facebook: {
+        id: page.id,
+        name: page.name,
+        picture: page.picture?.data?.url,
+        category: page.category,
+      },
       instagram,
     });
   } catch (err) {
     console.log(err.response?.data || err);
-    return res.status(500).json({ success: false, message: err.response?.data?.error?.message || "Server Error" });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: err.response?.data?.error?.message || "Server Error",
+      });
   }
 };
 
@@ -189,11 +238,13 @@ exports.disconnectMeta = async (req, res) => {
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user).select(
-      "facebookPageId facebookPageToken facebookPageName facebookPageCategory facebookPagePicture facebookConnectedAt instagramId instagramUsername"
+      "facebookPageId facebookPageToken facebookPageName facebookPageCategory facebookPagePicture facebookConnectedAt instagramId instagramUsername",
     );
 
     if (!user?.facebookPageId || !user?.facebookPageToken) {
-      return res.status(400).json({ success: false, message: "Facebook Page not connected" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Facebook Page not connected" });
     }
 
     const pagePromise = axios.get(`${BASE_URL}/${user.facebookPageId}`, {
@@ -223,7 +274,8 @@ exports.getProfile = async (req, res) => {
     if (user.instagramId) {
       igPromise = axios.get(`${BASE_URL}/${user.instagramId}`, {
         params: {
-          fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
+          fields:
+            "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
           access_token: user.facebookPageToken,
         },
       });
@@ -240,7 +292,12 @@ exports.getProfile = async (req, res) => {
     });
   } catch (err) {
     console.log(err.response?.data || err);
-    return res.status(500).json({ success: false, message: err.response?.data?.error?.message || "Internal Server Error" });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: err.response?.data?.error?.message || "Internal Server Error",
+      });
   }
 };
 
@@ -268,14 +325,21 @@ exports.getDashboardOverview = async (req, res) => {
   try {
     const { period = "30d", platform = "combined" } = req.query;
     const user = await User.findById(req.user).select(
-      "facebookPageId facebookPageToken instagramId instagramUsername"
+      "facebookPageId facebookPageToken instagramId instagramUsername",
     );
 
     if (!user?.facebookPageId || !user?.facebookPageToken) {
-      return res.status(400).json({ success: false, message: "Page not connected" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Page not connected" });
     }
 
-    const cacheKey = cache.memoKey("overview", user.facebookPageId, period, platform);
+    const cacheKey = cache.memoKey(
+      "overview",
+      user.facebookPageId,
+      period,
+      platform,
+    );
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
@@ -283,7 +347,9 @@ exports.getDashboardOverview = async (req, res) => {
     const token = user.facebookPageToken;
 
     const includeFacebook = platform === "combined" || platform === "facebook";
-    const includeInstagram = (platform === "combined" || platform === "instagram") && !!user.instagramId;
+    const includeInstagram =
+      (platform === "combined" || platform === "instagram") &&
+      !!user.instagramId;
 
     const batchRequests = [];
     const refs = {};
@@ -292,7 +358,10 @@ exports.getDashboardOverview = async (req, res) => {
     };
 
     if (includeFacebook) {
-      addRef("pageInfo", `${user.facebookPageId}?fields=id,name,fan_count,followers_count`);
+      addRef(
+        "pageInfo",
+        `${user.facebookPageId}?fields=id,name,fan_count,followers_count`,
+      );
       addRef(
         "pageInsights",
         `${user.facebookPageId}/insights?metric=${[
@@ -300,7 +369,7 @@ exports.getDashboardOverview = async (req, res) => {
           "page_total_media_view_unique",
           "page_post_engagements",
           "page_follows",
-        ].join(",")}&period=day&since=${sinceUnix}&until=${untilUnix}`
+        ].join(",")}&period=day&since=${sinceUnix}&until=${untilUnix}`,
       );
       addRef(
         "pagePosts",
@@ -308,17 +377,24 @@ exports.getDashboardOverview = async (req, res) => {
           "id",
           "likes.summary(true).limit(0)",
           "comments.summary(true).limit(0)",
-        ].join(",")}&since=${sinceUnix}&until=${untilUnix}&limit=100`
+        ].join(",")}&since=${sinceUnix}&until=${untilUnix}&limit=100`,
       );
     }
 
     if (includeInstagram) {
-      addRef("igInfo", `${user.instagramId}?fields=followers_count,follows_count,media_count`);
+      addRef(
+        "igInfo",
+        `${user.instagramId}?fields=followers_count,follows_count,media_count`,
+      );
       addRef(
         "igMedia",
-        `${user.instagramId}/media?fields=${["id", "media_product_type", "timestamp", "like_count", "comments_count"].join(
-          ","
-        )}&limit=50`
+        `${user.instagramId}/media?fields=${[
+          "id",
+          "media_product_type",
+          "timestamp",
+          "like_count",
+          "comments_count",
+        ].join(",")}&limit=50`,
       );
     }
 
@@ -329,7 +405,9 @@ exports.getDashboardOverview = async (req, res) => {
       if (idx === undefined) return null;
       const r = batchResults[idx];
       if (!r?.ok) {
-        warnings.push(`${name}: ${r?.body?.error?.message || "request failed"}`);
+        warnings.push(
+          `${name}: ${r?.body?.error?.message || "request failed"}`,
+        );
         return null;
       }
       return r.body;
@@ -356,15 +434,23 @@ exports.getDashboardOverview = async (req, res) => {
       const pageInsights = readBatch("pageInsights");
       const pagePosts = readBatch("pagePosts");
 
-      fb.totalFollowers = safeNum(pageInfo?.followers_count ?? pageInfo?.fan_count);
+      fb.totalFollowers = safeNum(
+        pageInfo?.followers_count ?? pageInfo?.fan_count,
+      );
 
       if (pageInsights?.data) {
         const byName = {};
         pageInsights.data.forEach((m) => (byName[m.name] = m.values || []));
 
         const impressions = seriesFromInsight(byName.page_media_view, "sum");
-        const reach = seriesFromInsight(byName.page_total_media_view_unique, "sum");
-        const engagement = seriesFromInsight(byName.page_post_engagements, "sum");
+        const reach = seriesFromInsight(
+          byName.page_total_media_view_unique,
+          "sum",
+        );
+        const engagement = seriesFromInsight(
+          byName.page_post_engagements,
+          "sum",
+        );
         const follows = seriesFromInsight(byName.page_follows, "last");
         const followsFirst = byName.page_follows?.[0]?.value ?? follows.total;
 
@@ -383,8 +469,14 @@ exports.getDashboardOverview = async (req, res) => {
 
       if (pagePosts?.data) {
         fb.totalPosts = pagePosts.data.length;
-        fb.totalLikes = pagePosts.data.reduce((s, p) => s + safeNum(p.likes?.summary?.total_count), 0);
-        fb.totalComments = pagePosts.data.reduce((s, p) => s + safeNum(p.comments?.summary?.total_count), 0);
+        fb.totalLikes = pagePosts.data.reduce(
+          (s, p) => s + safeNum(p.likes?.summary?.total_count),
+          0,
+        );
+        fb.totalComments = pagePosts.data.reduce(
+          (s, p) => s + safeNum(p.comments?.summary?.total_count),
+          0,
+        );
       }
     }
 
@@ -408,11 +500,18 @@ exports.getDashboardOverview = async (req, res) => {
       ig.totalFollowers = safeNum(igInfo?.followers_count);
 
       if (igMedia?.data) {
-        const inRange = igMedia.data.filter((m) => new Date(m.timestamp) >= since);
+        const inRange = igMedia.data.filter(
+          (m) => new Date(m.timestamp) >= since,
+        );
         ig.totalPosts = inRange.length;
-        ig.totalReels = inRange.filter((m) => m.media_product_type === "REELS").length;
+        ig.totalReels = inRange.filter(
+          (m) => m.media_product_type === "REELS",
+        ).length;
         ig.totalLikes = inRange.reduce((s, m) => s + safeNum(m.like_count), 0);
-        ig.totalComments = inRange.reduce((s, m) => s + safeNum(m.comments_count), 0);
+        ig.totalComments = inRange.reduce(
+          (s, m) => s + safeNum(m.comments_count),
+          0,
+        );
         ig.engagement = ig.totalLikes + ig.totalComments;
       }
 
@@ -421,11 +520,18 @@ exports.getDashboardOverview = async (req, res) => {
       // this is what used to throw "cannot be more than 30 days between
       // since and until" whenever period=90d was requested.
       try {
-        const reachSeries = await fetchIgReachTimeSeries(user.instagramId, token, sinceUnix, untilUnix);
+        const reachSeries = await fetchIgReachTimeSeries(
+          user.instagramId,
+          token,
+          sinceUnix,
+          untilUnix,
+        );
         ig.reach = reachSeries.reduce((s, p) => s + safeNum(p.value), 0);
         ig.reachSeries = reachSeries;
       } catch (e) {
-        warnings.push(`igInsights: ${e.response?.data?.error?.message || "unavailable for this account"}`);
+        warnings.push(
+          `igInsights: ${e.response?.data?.error?.message || "unavailable for this account"}`,
+        );
       }
     }
 
@@ -450,7 +556,11 @@ exports.getDashboardOverview = async (req, res) => {
 
     const payload = {
       success: true,
-      period: { key: period, since: since.toISOString().slice(0, 10), until: until.toISOString().slice(0, 10) },
+      period: {
+        key: period,
+        since: since.toISOString().slice(0, 10),
+        until: until.toISOString().slice(0, 10),
+      },
       platform,
       kpis: combined,
       facebook: fb,
@@ -463,7 +573,12 @@ exports.getDashboardOverview = async (req, res) => {
     return res.json(payload);
   } catch (err) {
     console.log(err.response?.data || err);
-    return res.status(500).json({ success: false, message: err.response?.data?.error?.message || "Server Error" });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: err.response?.data?.error?.message || "Server Error",
+      });
   }
 };
 
@@ -494,16 +609,30 @@ exports.getDashboard = exports.getDashboardOverview;
 */
 exports.getDashboardPosts = async (req, res) => {
   try {
-    const { period = "30d", platform = "combined", page = 1, limit = 20 } = req.query;
-    const user = await User.findById(req.user).select("facebookPageId facebookPageToken instagramId");
+    const {
+      period = "30d",
+      platform = "combined",
+      page = 1,
+      limit = 20,
+    } = req.query;
+    const user = await User.findById(req.user).select(
+      "facebookPageId facebookPageToken instagramId",
+    );
 
     if (!user?.facebookPageId || !user?.facebookPageToken) {
-      return res.status(400).json({ success: false, message: "Page not connected" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Page not connected" });
     }
 
     const { since, sinceUnix, untilUnix } = resolveDateRange(period);
     const token = user.facebookPageToken;
-    const cacheKey = cache.memoKey("posts", user.facebookPageId, period, platform);
+    const cacheKey = cache.memoKey(
+      "posts",
+      user.facebookPageId,
+      period,
+      platform,
+    );
 
     let unified = cache.get(cacheKey);
 
@@ -512,29 +641,34 @@ exports.getDashboardPosts = async (req, res) => {
 
       // ---- Facebook posts (1 call, insights inline) ----
       if (platform === "combined" || platform === "facebook") {
-        const { data } = await axios.get(`${BASE_URL}/${user.facebookPageId}/posts`, {
-          params: {
-            fields: [
-              "id",
-              "message",
-              "created_time",
-              "full_picture",
-              "permalink_url",
-              "likes.summary(true).limit(0)",
-              "comments.summary(true).limit(0)",
-              "shares",
-              "insights.metric(post_media_view,post_total_media_view_unique)",
-            ].join(","),
-            since: sinceUnix,
-            until: untilUnix,
-            limit: 100,
-            access_token: token,
+        const { data } = await axios.get(
+          `${BASE_URL}/${user.facebookPageId}/posts`,
+          {
+            params: {
+              fields: [
+                "id",
+                "message",
+                "created_time",
+                "full_picture",
+                "permalink_url",
+                "likes.summary(true).limit(0)",
+                "comments.summary(true).limit(0)",
+                "shares",
+                "insights.metric(post_media_view,post_total_media_view_unique)",
+              ].join(","),
+              since: sinceUnix,
+              until: untilUnix,
+              limit: 100,
+              access_token: token,
+            },
           },
-        });
+        );
 
         (data.data || []).forEach((p) => {
           const byName = {};
-          (p.insights?.data || []).forEach((m) => (byName[m.name] = safeNum(m.values?.[0]?.value)));
+          (p.insights?.data || []).forEach(
+            (m) => (byName[m.name] = safeNum(m.values?.[0]?.value)),
+          );
 
           const likes = safeNum(p.likes?.summary?.total_count);
           const comments = safeNum(p.comments?.summary?.total_count);
@@ -563,8 +697,15 @@ exports.getDashboardPosts = async (req, res) => {
       }
 
       // ---- Instagram media (paginated fetch, then 1 batch call for insights) ----
-      if ((platform === "combined" || platform === "instagram") && user.instagramId) {
-        const igPosts = await fetchAllIgMediaInRange(user.instagramId, token, since);
+      if (
+        (platform === "combined" || platform === "instagram") &&
+        user.instagramId
+      ) {
+        const igPosts = await fetchAllIgMediaInRange(
+          user.instagramId,
+          token,
+          since,
+        );
 
         if (igPosts.length) {
           const insightRequests = igPosts.map((m) => ({
@@ -575,14 +716,17 @@ exports.getDashboardPosts = async (req, res) => {
           igPosts.forEach((m, i) => {
             const body = insightResults[i]?.ok ? insightResults[i].body : null;
             const byName = {};
-            (body?.data || []).forEach((row) => (byName[row.name] = safeNum(row.values?.[0]?.value)));
+            (body?.data || []).forEach(
+              (row) => (byName[row.name] = safeNum(row.values?.[0]?.value)),
+            );
 
             const likes = safeNum(m.like_count);
             const comments = safeNum(m.comments_count);
             const reach = byName.reach || 0;
             const views = byName.views || 0;
             const engaged =
-              byName.total_interactions || likes + comments + (byName.shares || 0) + (byName.saved || 0);
+              byName.total_interactions ||
+              likes + comments + (byName.shares || 0) + (byName.saved || 0);
 
             unified.push({
               id: m.id,
@@ -608,7 +752,9 @@ exports.getDashboardPosts = async (req, res) => {
       cache.set(cacheKey, unified, 5 * 60_000);
     }
 
-    const topPosts = [...unified].sort((a, b) => b.engagement - a.engagement).slice(0, 5);
+    const topPosts = [...unified]
+      .sort((a, b) => b.engagement - a.engagement)
+      .slice(0, 5);
     const reels = unified.filter((u) => u.isReel);
 
     const p = Math.max(1, parseInt(page, 10) || 1);
@@ -628,7 +774,12 @@ exports.getDashboardPosts = async (req, res) => {
     });
   } catch (err) {
     console.log(err.response?.data || err);
-    return res.status(500).json({ success: false, message: err.response?.data?.error?.message || "Server Error" });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: err.response?.data?.error?.message || "Server Error",
+      });
   }
 };
 
@@ -647,22 +798,44 @@ exports.getDashboardPosts = async (req, res) => {
 exports.getDashboardMessages = async (req, res) => {
   try {
     const { period = "30d" } = req.query;
-    const user = await User.findById(req.user).select("facebookPageId facebookPageToken");
+    const user = await User.findById(req.user).select(
+      "facebookPageId facebookPageToken",
+    );
     if (!user?.facebookPageId || !user?.facebookPageToken) {
-      return res.status(400).json({ success: false, message: "Page not connected" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Page not connected" });
     }
 
     const { since } = resolveDateRange(period);
 
-    const { data } = await axios.get(`${BASE_URL}/${user.facebookPageId}/conversations`, {
-      params: { fields: "id,updated_time,unread_count,message_count", limit: 100, access_token: user.facebookPageToken },
-    });
+    const { data } = await axios.get(
+      `${BASE_URL}/${user.facebookPageId}/conversations`,
+      {
+        params: {
+          fields: "id,updated_time,unread_count,message_count",
+          limit: 100,
+          access_token: user.facebookPageToken,
+        },
+      },
+    );
 
     const conversations = data.data || [];
-    const inRange = conversations.filter((c) => new Date(c.updated_time) >= since);
-    const unreadMessages = conversations.reduce((s, c) => s + safeNum(c.unread_count), 0);
+    const inRange = conversations.filter(
+      (c) => new Date(c.updated_time) >= since,
+    );
+    const unreadMessages = conversations.reduce(
+      (s, c) => s + safeNum(c.unread_count),
+      0,
+    );
 
-    return res.json({ success: true, period, pageMessages: inRange.length, unreadMessages, messagingEnabled: true });
+    return res.json({
+      success: true,
+      period,
+      pageMessages: inRange.length,
+      unreadMessages,
+      messagingEnabled: true,
+    });
   } catch (err) {
     console.log(err.response?.data || err);
     // Missing `pages_messaging` permission (not yet granted/approved) — degrade gracefully.
@@ -671,7 +844,310 @@ exports.getDashboardMessages = async (req, res) => {
       pageMessages: 0,
       unreadMessages: 0,
       messagingEnabled: false,
-      message: err.response?.data?.error?.message || "Messaging insights unavailable",
+      message:
+        err.response?.data?.error?.message || "Messaging insights unavailable",
+    });
+  }
+};
+
+/* ================================================================== */
+/*  PUBLISHING — Facebook Page posts (text / photo / video / reel)     */
+/* ================================================================== */
+/*
+  POST /meta/posts/facebook   (multipart/form-data)
+  fields:
+    type:        "text" | "photo" | "video" | "reel"   (default "photo")
+    message:     text for a text post; also the caption/description
+                 fallback for the other types
+    link:        optional link to attach to a text post
+    title:       video title (video posts only)
+    description: video/reel description — falls back to `message`
+  file field:
+    media:       the image/video file selected from the device gallery
+                 (not required for type "text")
+ 
+  Requires multer on the route, e.g.:
+    router.post("/meta/posts/facebook", auth, upload.single("media"), uploadFacebookPost)
+*/
+exports.uploadFacebookPost = async (req, res) => {
+  try {
+    const {
+      type = "photo",
+      message,
+      caption,
+      link,
+      title,
+      description,
+    } = req.body;
+    const file = req.files?.file?.[0];
+
+    console.log("body", req.body);
+    console.log("file", req.files?.file?.[0]);
+    const user = await User.findById(req.user).select(
+      "facebookPageId facebookPageToken",
+    );
+    if (!user?.facebookPageId || !user?.facebookPageToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Page not connected" });
+    }
+
+    const pageId = user.facebookPageId;
+    const token = user.facebookPageToken;
+
+    let result;
+    switch (type) {
+      case "text":
+        if (!message) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: "message is required for a text post",
+            });
+        }
+        result = await publishFacebookText(pageId, token, { message, link });
+        break;
+
+      case "photo":
+        if (!file) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: "An image file (`media`) is required for a photo post",
+            });
+        }
+        result = await publishFacebookPhoto(pageId, token, {
+          buffer: file.buffer,
+          filename: file.originalname,
+          mimetype: file.mimetype,
+          caption: caption ?? message,
+        });
+        break;
+
+      case "video":
+        if (!file) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: "A video file (`media`) is required for a video post",
+            });
+        }
+        result = await publishFacebookVideo(pageId, token, {
+          buffer: file.buffer,
+          filename: file.originalname,
+          mimetype: file.mimetype,
+          title,
+          description: description ?? message,
+        });
+        break;
+
+      case "reel":
+        if (!file) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: "A video file (`media`) is required for a reel",
+            });
+        }
+        result = await publishFacebookReel(pageId, token, {
+          buffer: file.buffer,
+          description: description ?? message,
+        });
+        break;
+
+      default:
+        return res
+          .status(400)
+          .json({ success: false, message: `Unsupported post type "${type}"` });
+    }
+
+    // The KPI cards and posts table both read from the 5-minute cache —
+    // drop it so the new post shows up on the very next dashboard request.
+    cache.delPrefix(cache.memoKey("posts", pageId));
+    cache.delPrefix(cache.memoKey("overview", pageId));
+
+    return res.json({
+      success: true,
+      message: "Facebook post published",
+      platform: "facebook",
+      type,
+      result,
+    });
+  } catch (err) {
+    console.log(err.response?.data || err);
+    return res.status(500).json({
+      success: false,
+      message:
+        err.response?.data?.error?.message || err.message || "Server Error",
+    });
+  }
+};
+
+/* ================================================================== */
+/*  PUBLISHING — Instagram content (image / video / reel / carousel)   */
+/* ================================================================== */
+/*
+  POST /meta/posts/instagram   (multipart/form-data)
+  fields:
+    type:    "image" | "video" | "reel" | "carousel"   (default "image")
+    caption: caption for the post
+  file field:
+    media:   one file for image/video/reel; 2-10 files for carousel
+             (carousel item type — image vs video — is auto-detected per
+             file from its mimetype, so the client just attaches files)
+ 
+  Requires multer on the route, e.g.:
+    router.post("/meta/posts/instagram", auth, upload.array("media", 10), uploadInstagramPost)
+ 
+  Video/Reels go through Meta's resumable binary upload — no URL needed.
+  Images still need a hosted URL on Meta's side; uploadBufferToPublicUrl()
+  in utils/metaGraphapi.js is the (currently unimplemented) seam for that —
+  wire it to this app's object storage to unblock IG image/carousel-image posts.
+*/
+exports.uploadInstagramPost = async (req, res) => {
+  try {
+    const { type = "image", caption } = req.body;
+    const files = req.files || [];
+
+    const user = await User.findById(req.user).select(
+      "facebookPageId instagramId facebookPageToken",
+    );
+    if (!user?.instagramId || !user?.facebookPageToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Instagram account not connected" });
+    }
+
+    const igId = user.instagramId;
+    const token = user.facebookPageToken; // IG Graph API calls are authorized with the linked Page token
+
+    let creationId;
+
+    if (type === "carousel") {
+      if (files.length < 2) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "carousel posts need 2-10 `media` files",
+          });
+      }
+      if (files.length > 10) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "Instagram carousels support a maximum of 10 items",
+          });
+      }
+
+      // Video children upload as binary (resumable); image children still
+      // need a hosted URL — see uploadBufferToPublicUrl's doc comment.
+      const children = await Promise.all(
+        files.map(async (file) => {
+          const isVideo = file.mimetype.startsWith("video/");
+
+          if (isVideo) {
+            const container = await createIgResumableContainer(igId, token, {
+              mediaType: "VIDEO",
+              isCarouselItem: true,
+            });
+            await uploadIgResumableBinary(container.id, token, file.buffer);
+            await pollIgContainerStatus(container.id, token);
+            return container.id;
+          }
+
+          const imageUrl = await uploadBufferToPublicUrl(
+            file.buffer,
+            file.originalname,
+            file.mimetype,
+          );
+          const container = await createIgMediaContainer(igId, token, {
+            image_url: imageUrl,
+            is_carousel_item: true,
+          });
+          return container.id;
+        }),
+      );
+
+      const carousel = await createIgMediaContainer(igId, token, {
+        media_type: "CAROUSEL",
+        caption,
+        children: children.join(","),
+      });
+      creationId = carousel.id;
+    } else if (type === "reel" || type === "video") {
+      const file = files[0];
+      if (!file) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "A video file (`media`) is required for a video/reel post",
+          });
+      }
+
+      const container = await createIgResumableContainer(igId, token, {
+        mediaType: type === "reel" ? "REELS" : "VIDEO",
+        caption,
+      });
+      await uploadIgResumableBinary(container.id, token, file.buffer);
+      await pollIgContainerStatus(container.id, token);
+      creationId = container.id;
+    } else if (type === "image") {
+      const file = files[0];
+      if (!file) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "An image file (`media`) is required for an image post",
+          });
+      }
+
+      const imageUrl = await uploadBufferToPublicUrl(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+      );
+      const container = await createIgMediaContainer(igId, token, {
+        image_url: imageUrl,
+        caption,
+      });
+      await pollIgContainerStatus(container.id, token);
+      creationId = container.id;
+    } else {
+      return res
+        .status(400)
+        .json({ success: false, message: `Unsupported post type "${type}"` });
+    }
+
+    const published = await publishIgContainer(igId, token, creationId);
+
+    // "posts"/"overview" caches are keyed by facebookPageId even for IG-only
+    // requests (see getDashboardPosts/getDashboardOverview) — invalidate the
+    // same way here so both dashboards pick up the new post immediately.
+    const cacheOwnerId = user.facebookPageId || igId;
+    cache.delPrefix(cache.memoKey("posts", cacheOwnerId));
+    cache.delPrefix(cache.memoKey("overview", cacheOwnerId));
+
+    return res.json({
+      success: true,
+      message: "Instagram post published",
+      platform: "instagram",
+      type,
+      result: published,
+    });
+  } catch (err) {
+    console.log(err.response?.data || err.igContainerStatus || err);
+    return res.status(500).json({
+      success: false,
+      message:
+        err.response?.data?.error?.message || err.message || "Server Error",
     });
   }
 };

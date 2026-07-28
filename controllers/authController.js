@@ -6,6 +6,8 @@ const OtpModel = require("../models/otp");
 const { sendWhatsappOtp } = require("../utils/whatsappOtp");
 const { createOtpForMobile } = require("../utils/authUtils");
 
+const syncUserWithBizyro = require("../utils/userSyncBizyro");
+
 const {
   getUploadedFilePath,
   isValidEmail,
@@ -172,6 +174,11 @@ exports.register = async (req, res) => {
       user.businessId = business._id;
       user.registrationStep = 2;
       await user.save();
+      try {
+        await syncUserWithBizyro(user);
+      } catch (error) {
+        console.error("Bizyro sync pending:", error.message);
+      }
 
       await sendWhatsappOtp(user.mobileNumber);
 
@@ -216,7 +223,7 @@ exports.Login = async (req, res) => {
     const user = await User.findOne({ mobileNumber });
 
     if (!user) {
-      return res.status(404).json({
+      return res.status(200).json({
         status: 0,
         userExist: false,
         message: "User not found. Please complete registration.",
@@ -234,7 +241,7 @@ exports.Login = async (req, res) => {
     }
 
     const otp = await createOtpForMobile(mobileNumber);
-    
+
     // await sendWhatsappOtp(user.mobileNumber);
 
     return res.status(200).json({
@@ -354,8 +361,7 @@ exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user;
 
-    const { name, email, businessName, gstNumber, address, website } =
-      req.body;
+    const { name, email, businessName, gstNumber, address, website } = req.body;
 
     const updateData = {};
 
@@ -387,7 +393,6 @@ exports.updateProfile = async (req, res) => {
       message: "Profile updated successfully",
       profile: update,
     });
-    
   } catch (error) {
     console.error(error);
     return res.status(500).json({
