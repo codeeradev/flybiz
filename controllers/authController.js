@@ -367,3 +367,52 @@ exports.updateProfile = async (req, res) => {
     });
   }
 };
+exports.businessCategory = async (req, res) => {
+  try {
+    const data = [
+      { id: 1, name: "Retail & E-commerce" },
+      { id: 2, name: "Healthcare" },
+      { id: 3, name: "Real Estate" },
+      { id: 4, name: "IT & Software" },
+      { id: 5, name: "Other" },
+    ];
+
+    return res.status(200).json({
+      status: 1,
+      message: "Business categories fetched successfully",
+      data,
+    });
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      status: 0,
+      message: "Server error",
+    });
+  }
+};
+
+exports.businessCategory = async (req, res) => {
+  try {
+    const data = [
+      { id: "688b1a2c3d4e5f6789012341", name: "Retail & E-commerce" },
+      { id: "688b1a2c3d4e5f6789012342", name: "Healthcare" },
+      { id: "688b1a2c3d4e5f6789012343", name: "Real Estate" },
+      { id: "688b1a2c3d4e5f6789012345", name: "IT & Software" },
+      { id: "688b1a2c3d4e5f6789012346", name: "Other" },
+    ];
+
+    return res.status(200).json({
+      status: 1,
+      message: "Business categories fetched successfully",
+      data,
+    });
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      status: 0,
+      message: "Server error",
+    });
+  }
+};
