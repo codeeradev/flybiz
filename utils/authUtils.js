@@ -10,17 +10,7 @@ const normalizeEmail = (email) => {
   return value ? value.toLowerCase() : null;
 };
 
-const normalizeMobileNumber = (mobileNumber) => {
-  const value = normalizeString(mobileNumber);
-  return value || null;
-};
-
 const isValidEmail = (email) => validator.isEmail(email);
-
-const isValidMobileNumber = (mobileNumber) =>
-  validator.isMobilePhone(mobileNumber, "any", {
-    strictMode: true,
-  });
 
 const getUploadedFilePath = (file) =>
   file?.filename ? `/assets/uploads/${file.filename}` : null;
@@ -59,9 +49,7 @@ module.exports = {
   createOtpForMobile,
   getUploadedFilePath,
   isValidEmail,
-  isValidMobileNumber,
   normalizeEmail,
-  normalizeMobileNumber,
   createOtpForEmail,
   normalizeString,
 };

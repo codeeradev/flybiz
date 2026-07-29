@@ -11,9 +11,7 @@ const syncUserWithBizyro = require("../utils/userSyncBizyro");
 const {
   getUploadedFilePath,
   isValidEmail,
-  isValidMobileNumber,
   normalizeEmail,
-  normalizeMobileNumber,
   normalizeString,
   createOtpForEmail,
 } = require("../utils/authUtils");
@@ -203,7 +201,6 @@ exports.verifyOtp = async (req, res) => {
         userId: user._id,
         businessId: user.businessId || null,
         email: user.email,
-        mobileNumber: user.mobileNumber,
       });
     }
 
@@ -214,23 +211,15 @@ exports.verifyOtp = async (req, res) => {
      */
 
     const name = normalizeString(req.body.name);
-    const phone = normalizeMobileNumber(req.body.phone);
     const businessCategory = normalizeString(req.body.businessCategory);
     const teamSize = normalizeString(req.body.teamSize);
 
     if (type !== "google") {
-      if (!name || !phone || !businessCategory || !teamSize) {
+      if (!name || !businessCategory || !teamSize) {
         return res.status(400).json({
           status: 0,
           message:
-            "name, phone, businessCategory and teamSize are required for registration",
-        });
-      }
-
-      if (!isValidMobileNumber(phone)) {
-        return res.status(400).json({
-          status: 0,
-          message: "Enter a valid phone number with country code",
+            "name, businessCategory and teamSize are required for registration",
         });
       }
     }
@@ -243,7 +232,6 @@ exports.verifyOtp = async (req, res) => {
     user = await User.create({
       name,
       email,
-      mobileNumber: phone,
       image: getUploadedFilePath(req.files?.image?.[0]),
     });
 
@@ -257,7 +245,6 @@ exports.verifyOtp = async (req, res) => {
       userId: user._id,
       businessName: name,
       email,
-      mobileNumber: phone,
       businessCategory,
       teamSize,
     };
@@ -300,7 +287,6 @@ exports.verifyOtp = async (req, res) => {
       userId: user._id,
       businessId: business._id,
       email: user.email,
-      mobileNumber: user.mobileNumber,
     });
   } catch (error) {
     console.error("Verify OTP error:", error);
