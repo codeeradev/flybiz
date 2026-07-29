@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Business = require("../models/business");
 const OtpModel = require("../models/otp");
-const { sendWhatsappOtp } = require("../utils/whatsappOtp");
+const sendEmailOtp = require("../config/nodemailer");
 const { createOtpForMobile } = require("../utils/authUtils");
 
 const syncUserWithBizyro = require("../utils/userSyncBizyro");
@@ -15,318 +15,299 @@ const {
   normalizeEmail,
   normalizeMobileNumber,
   normalizeString,
+  createOtpForEmail,
 } = require("../utils/authUtils");
 
-const getAuthErrorMessage = (fallbackMessage, error) => {
-  const errorMessage = normalizeString(error?.message);
-
-  if (errorMessage && errorMessage.toLowerCase().includes("whatsapp")) {
-    return errorMessage;
-  }
-
-  return fallbackMessage;
-};
-
-exports.register = async (req, res) => {
+exports.sendOtp = async (req, res) => {
   try {
-    const step = Number(req.body.step);
+    const email = normalizeEmail(req.body.email);
+    const query = normalizeString(req.body.query)?.toLowerCase();
 
-    if (step === 1) {
-      const mobileNumber = normalizeMobileNumber(req.body.mobileNumber);
-      const email = normalizeEmail(req.body.email);
-
-      if (!mobileNumber || !email) {
-        return res.status(400).json({
-          message: "Mobile number and email are required",
-        });
-      }
-
-      if (!isValidMobileNumber(mobileNumber)) {
-        return res.status(400).json({
-          message: "Enter a valid mobile number with country code",
-        });
-      }
-
-      if (!isValidEmail(email)) {
-        return res.status(400).json({
-          message: "Enter a valid email address",
-        });
-      }
-
-      const existingUser = await User.findOne({
-        $or: [{ mobileNumber }, { email }],
-      });
-
-      if (existingUser) {
-        if (Number(existingUser.registrationStep) === 1) {
-          return res.status(200).json({
-            status: 1,
-            userExist: true,
-            message: "User already exists. Please add business details.",
-            step: 1,
-            nextStep: 2,
-          });
-        }
-
-        return res.status(409).json({
-          status: 0,
-          userExist: true,
-          message: "User already exists. Please login.",
-          step: 2,
-          nextStep: "login",
-        });
-      }
-
-      const user = await User.create({
-        mobileNumber,
-        email,
-        name: normalizeString(req.body.name),
-        image: getUploadedFilePath(req.files?.image?.[0]),
-        registrationStep: 1,
-      });
-
-      return res.status(201).json({
-        status: 1,
-        message: "Personal details saved successfully",
-        step: 1,
-        nextStep: 2,
-      });
-    }
-
-    if (step === 2) {
-      const lookupMobileNumber = normalizeMobileNumber(req.body.mobileNumber);
-      const lookupEmail = normalizeEmail(req.body.email);
-      const businessName = normalizeString(req.body.businessName);
-      const gstNumber = normalizeString(req.body.gstNumber);
-      const email = normalizeEmail(req.body.businessEmail || req.body.email);
-      const mobileNumber = normalizeMobileNumber(
-        req.body.businessMobileNumber || req.body.mobileNumber,
-      );
-      const address = normalizeString(req.body.address);
-
-      if (!lookupMobileNumber && !lookupEmail) {
-        return res.status(400).json({
-          message: "Mobile number or email is required",
-        });
-      }
-
-      if (!businessName || !gstNumber || !email || !mobileNumber || !address) {
-        return res.status(400).json({
-          message:
-            "businessName, gstNumber, business email, business mobile number and address are required",
-        });
-      }
-
-      if (!isValidEmail(email)) {
-        return res.status(400).json({
-          message: "Enter a valid business email address",
-        });
-      }
-
-      if (!isValidMobileNumber(mobileNumber)) {
-        return res.status(400).json({
-          message: "Enter a valid business mobile number with country code",
-        });
-      }
-
-      const userQuery = [];
-
-      if (lookupMobileNumber) {
-        userQuery.push({ mobileNumber: lookupMobileNumber });
-      }
-
-      if (lookupEmail) {
-        userQuery.push({ email: lookupEmail });
-      }
-
-      const user = await User.findOne({
-        $or: userQuery,
-      });
-
-      if (!user) {
-        return res.status(404).json({
-          message: "User not found. Please complete step 1 first.",
-        });
-      }
-
-      if (Number(user.registrationStep) === 2) {
-        return res.status(409).json({
-          status: 0,
-          message: "Business details already added. Please login.",
-          step: 2,
-          nextStep: "login",
-        });
-      }
-
-      const business = await Business.create({
-        userId: user._id,
-        businessName,
-        gstNumber,
-        email,
-        mobileNumber,
-        address,
-        website: normalizeString(req.body.website) || null,
-        companyLogo: getUploadedFilePath(
-          req.files?.companyLogo?.[0] || req.files?.image?.[0],
-        ),
-      });
-
-      user.businessId = business._id;
-      user.registrationStep = 2;
-      await user.save();
-      try {
-        await syncUserWithBizyro(user);
-      } catch (error) {
-        console.error("Bizyro sync pending:", error.message);
-      }
-
-      await sendWhatsappOtp(user.mobileNumber);
-
-      return res.status(201).json({
-        status: 1,
-        message: "Business details saved successfully. OTP sent on WhatsApp",
-        mobileNumber: user.mobileNumber,
-        otpChannel: "whatsapp",
-        step: 2,
-        nextStep: "verify-otp",
-      });
-    }
-
-    return res.status(400).json({
-      message: "step must be 1 or 2",
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      status: 2,
-      message: getAuthErrorMessage("Error in registration", error),
-    });
-  }
-};
-
-exports.Login = async (req, res) => {
-  try {
-    const mobileNumber = normalizeMobileNumber(req.body.mobileNumber);
-
-    if (!mobileNumber) {
+    if (!email) {
       return res.status(400).json({
-        message: "Mobile number is required",
+        status: 0,
+        message: "Email is required",
       });
     }
 
-    if (!isValidMobileNumber(mobileNumber)) {
+    if (!isValidEmail(email)) {
       return res.status(400).json({
-        message: "Enter a valid mobile number with country code",
+        status: 0,
+        message: "Enter a valid email address",
       });
     }
 
-    const user = await User.findOne({ mobileNumber });
+    if (!["login", "register"].includes(query)) {
+      return res.status(400).json({
+        status: 0,
+        message: "query must be login or register",
+      });
+    }
 
-    if (!user) {
+    const existingUser = await User.findOne({ email });
+
+    // LOGIN: user must already exist
+    if (query === "login" && !existingUser) {
       return res.status(200).json({
         status: 0,
         userExist: false,
-        message: "User not found. Please complete registration.",
+        message: "User not found. Please register.",
+        nextStep: "register",
       });
     }
 
-    if (Number(user.registrationStep) < 2 || !user.businessId) {
-      return res.status(403).json({
+    // REGISTER: user must NOT already exist
+    if (query === "register" && existingUser) {
+      return res.status(200).json({
         status: 0,
         userExist: true,
-        message: "Please add business details before login.",
-        step: Number(user.registrationStep) || 1,
-        nextStep: 2,
+        message: "User already exists. Please login.",
+        nextStep: "login",
       });
     }
 
-    const otp = await createOtpForMobile(mobileNumber);
+    // Create OTP for EMAIL
+    const otp = await createOtpForEmail(email);
 
-    // await sendWhatsappOtp(user.mobileNumber);
+    // Send OTP through email
+    await sendEmailOtp(email, otp);
 
     return res.status(200).json({
       status: 1,
-      userExist: true,
-      message: "OTP sent successfully on WhatsApp",
-      otp,
-      mobileNumber: user.mobileNumber,
-      otpChannel: "whatsapp",
+      userExist: Boolean(existingUser),
+      message: "OTP sent successfully to your email",
+      email,
+      otpChannel: "email",
+      nextStep: "verify-otp",
+
+      // REMOVE in production
+      // otp,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Send OTP error:", error);
+
     return res.status(500).json({
       status: 2,
-      message: getAuthErrorMessage("Error in login", error),
+      message: "Error sending OTP",
+      error,
     });
   }
 };
 
 exports.verifyOtp = async (req, res) => {
   try {
-    const mobileNumber = normalizeMobileNumber(req.body.mobileNumber);
+    const email = normalizeEmail(req.body.email);
     const otp = normalizeString(req.body.otp);
+    const type = normalizeString(req.body.type)?.toLowerCase();
 
-    if (!mobileNumber) {
+    // Google login ke case me frontend se accessToken aayega
+    const googleAccessToken = normalizeString(req.body.accessToken);
+
+    if (!email) {
       return res.status(400).json({
-        message: "Mobile number is required",
+        status: 0,
+        message: "Email is required",
       });
     }
 
-    if (!isValidMobileNumber(mobileNumber)) {
-      return res.status(400).json({
-        message: "Enter a valid mobile number with country code",
+    /*
+     * ==========================================
+     * AUTH VERIFICATION
+     * ==========================================
+     */
+
+    if (type === "google") {
+      // Google flow -> OTP required nahi hai
+
+      if (!googleAccessToken) {
+        return res.status(400).json({
+          status: 0,
+          message: "Google access token is required",
+        });
+      }
+
+      // IMPORTANT:
+      // Yahan googleAccessToken ko Google se verify karna hai
+      // aur verify karna hai ki token isi email ka hai.
+    } else {
+      // Normal Email OTP flow
+
+      if (!isValidEmail(email)) {
+        return res.status(400).json({
+          status: 0,
+          message: "Enter a valid email address",
+        });
+      }
+
+      if (!otp) {
+        return res.status(400).json({
+          status: 0,
+          message: "OTP is required",
+        });
+      }
+
+      const otpRecord = await OtpModel.findOne({
+        email,
+        otp: String(otp),
+      }).sort({ createdAt: -1 });
+
+      if (!otpRecord) {
+        return res.status(400).json({
+          status: 0,
+          message: "Invalid OTP",
+        });
+      }
+
+      await OtpModel.deleteOne({
+        _id: otpRecord._id,
       });
     }
 
-    if (!otp) {
-      return res.status(400).json({
-        message: "OTP is required",
+    /*
+     * ==========================================
+     * CHECK USER
+     * ==========================================
+     */
+
+    let user = await User.findOne({ email });
+
+    /*
+     * ==========================================
+     * EXISTING USER -> LOGIN
+     * ==========================================
+     */
+
+    if (user) {
+      /*
+       * Continue with Google se login hua hai
+       * to latest Google access token Business me save/update karo.
+       */
+      if (type === "google") {
+        await Business.findOneAndUpdate(
+          { userId: user._id },
+          {
+            $set: {
+              accessToken: googleAccessToken,
+            },
+          },
+        );
+      }
+
+      const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET);
+
+      return res.status(200).json({
+        status: 1,
+        userExist: true,
+        message: "Login successful",
+        token,
+        userId: user._id,
+        businessId: user.businessId || null,
+        email: user.email,
+        mobileNumber: user.mobileNumber,
       });
     }
 
-    const user = await User.findOne({ mobileNumber });
+    /*
+     * ==========================================
+     * USER DOESN'T EXIST -> REGISTER
+     * ==========================================
+     */
 
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+    const name = normalizeString(req.body.name);
+    const phone = normalizeMobileNumber(req.body.phone);
+    const businessCategory = normalizeString(req.body.businessCategory);
+    const teamSize = normalizeString(req.body.teamSize);
+
+    if (type !== "google") {
+      if (!name || !phone || !businessCategory || !teamSize) {
+        return res.status(400).json({
+          status: 0,
+          message:
+            "name, phone, businessCategory and teamSize are required for registration",
+        });
+      }
+
+      if (!isValidMobileNumber(phone)) {
+        return res.status(400).json({
+          status: 0,
+          message: "Enter a valid phone number with country code",
+        });
+      }
     }
+    /*
+     * ==========================================
+     * CREATE USER
+     * ==========================================
+     */
 
-    const otpRecord = await OtpModel.findOne({
-      mobileNumber,
-      otp: String(otp),
+    user = await User.create({
+      name,
+      email,
+      mobileNumber: phone,
+      image: getUploadedFilePath(req.files?.image?.[0]),
     });
 
-    if (!otpRecord) {
-      return res.status(400).json({
-        message: "Invalid OTP",
-      });
+    /*
+     * ==========================================
+     * CREATE BUSINESS
+     * ==========================================
+     */
+
+    const businessData = {
+      userId: user._id,
+      businessName: name,
+      email,
+      mobileNumber: phone,
+      businessCategory,
+      teamSize,
+    };
+
+    // Google access token ONLY Business me save hoga
+    if (type === "google") {
+      businessData.accessToken = googleAccessToken;
     }
 
-    if (new Date(otpRecord.expiresAt) < new Date()) {
-      await OtpModel.deleteOne({ _id: otpRecord._id });
+    const business = await Business.create(businessData);
 
-      return res.status(400).json({
-        message: "OTP expired",
-      });
+    /*
+     * Link business with user
+     */
+
+    user.businessId = business._id;
+    await user.save();
+
+    /*
+     * Bizyro Sync
+     */
+
+    try {
+      await syncUserWithBizyro(user);
+    } catch (error) {
+      console.error("Bizyro sync pending:", error.message);
     }
 
-    await OtpModel.deleteOne({ _id: otpRecord._id });
+    /*
+     * Generate FlyBiz JWT
+     */
 
     const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET);
 
-    return res.status(200).json({
-      message: "Login successful",
+    return res.status(201).json({
+      status: 1,
+      userExist: false,
+      message: "Registration successful",
       token,
       userId: user._id,
-      businessId: user.businessId || null,
+      businessId: business._id,
+      email: user.email,
       mobileNumber: user.mobileNumber,
-      registrationStep: user.registrationStep || 1,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Verify OTP error:", error);
+
     return res.status(500).json({
-      message: "An error occurred",
+      status: 2,
+      message: "Error verifying OTP",
     });
   }
 };

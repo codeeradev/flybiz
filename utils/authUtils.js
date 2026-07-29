@@ -38,6 +38,23 @@ const createOtpForMobile = async (mobileNumber) => {
   return String(otp);
 };
 
+const createOtpForEmail = async (email) => {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  // Previous OTPs invalidate
+  await OtpModel.deleteMany({ email });
+
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+  await OtpModel.create({
+    email,
+    otp,
+    expiresAt,
+  });
+
+  return otp;
+};
+
 module.exports = {
   createOtpForMobile,
   getUploadedFilePath,
@@ -45,5 +62,6 @@ module.exports = {
   isValidMobileNumber,
   normalizeEmail,
   normalizeMobileNumber,
+  createOtpForEmail,
   normalizeString,
 };

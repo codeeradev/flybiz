@@ -6,15 +6,10 @@ const userSchema = new mongoose.Schema(
     email: { type: String },
     name: { type: String },
     image: { type: String },
-    password: { type: String },
     businessId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "business",
       default: null,
-    },
-    registrationStep: {
-      type: Number,
-      default: 1,
     },
 
     role: {
