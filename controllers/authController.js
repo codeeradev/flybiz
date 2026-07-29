@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Business = require("../models/business");
 const OtpModel = require("../models/otp");
-const sendEmailOtp = require("../config/nodemailer");
+const {sendEmailOtp} = require("../config/nodemailer");
 const { createOtpForMobile } = require("../utils/authUtils");
 
 const syncUserWithBizyro = require("../utils/userSyncBizyro");
