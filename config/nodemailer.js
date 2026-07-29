@@ -1,42 +1,42 @@
 const nodemailer = require("nodemailer");
+
 const transporter = nodemailer.createTransport({
-  host: "smtp.hostinger.com", // Or use the server IP if given: 172.93.223.239
-  port: 465, // Use 465 for SSL (recommended)
-  secure: true, // true for port 465, false for 587
+  host: "smtp.hostinger.com",
+  port: 465,
+  secure: true,
   auth: {
-    user: "goutam@codeeratech.in", // Your no-reply email
+    user: "goutam@codeeratech.in",
     pass: "Goutam@2025!",
   },
-//   tls: {
-//     rejectUnauthorized: false,
-//   },
 });
 
-const sendVerificationEmail = async (
-  to,
-  subject,
-  html,
-  attachmentPath = null,
-) => {
+const sendEmailOtp = async (to, otp) => {
   const mail = {
-    from: "Bizyro <goutam@codeeratech.in>",
+    from: `Bizyro <goutam@codeeratech.in>`,
     to,
-    subject,
-    html,
-  };
+    subject: "Your Bizyro OTP Code",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto;">
+        <h2>Bizyro Verification</h2>
 
-  if (attachmentPath) {
-    mail.attachments = [
-      {
-        filename: "Signed-MOU.pdf",
-        path: attachmentPath,
-      },
-    ];
-  }
+        <p>Your verification code is:</p>
+
+        <h1 style="letter-spacing: 6px;">
+          ${otp}
+        </h1>
+
+        <p>This OTP is valid for 5 minutes.</p>
+
+        <p>If you did not request this code, please ignore this email.</p>
+
+        <p>Bizyro Team</p>
+      </div>
+    `,
+  };
 
   await transporter.sendMail(mail);
 };
 
 module.exports = {
-  sendVerificationEmail,
+  sendEmailOtp,
 };
