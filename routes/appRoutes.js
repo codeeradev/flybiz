@@ -5,6 +5,6 @@ const verifyToken = require("../middleware/authToken");
 
 const { getInsights } = require("../controllers/appController");
 
-router.post("/get-insights", verifyToken, getInsights);
+router.get("/get-insights", verifyToken, getInsights);
 
 module.exports = router;
