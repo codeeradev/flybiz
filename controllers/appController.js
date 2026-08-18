@@ -3,7 +3,7 @@ exports.getInsights = async (req, res) => {
     const userId = req.user;
 
     const data = {
-      social = [
+      social : [
         {
           title: "Instagram Followers",
           value: "18.6K",
@@ -75,7 +75,7 @@ exports.getInsights = async (req, res) => {
           secondaryMetricValue: "1.9K",
         },
       ],
-      posts = [
+      posts : [
         {
           title: "Total Posters",
           value: 128,
