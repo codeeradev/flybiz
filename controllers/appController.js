@@ -2,7 +2,7 @@ exports.getInsights = async (req, res) => {
   try {
     const userId = req.user;
 
-    const data = [
+    const data = {
       social = [
         {
           title: "Instagram Followers",
@@ -89,7 +89,7 @@ exports.getInsights = async (req, res) => {
           growth: 18,
         },
       ],
-    ];
+    };
 
     return res.status(200).json({
       status: 1,
