@@ -21,6 +21,7 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const googleRoutes = require("./routes/googleRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const metaRoutes = require("./routes/metaRoutes");
+const appRoutes = require("./routes/appRoutes");
 
 app.get("/", (req, res) => {
   res.send("FLyBiz api is running ...");
@@ -32,6 +33,7 @@ app.use("/admin/analytics", adminAnalyticsRoutes);
 app.use("/admin", adminRoutes);
 app.use("/auth", authRoutes);
 app.use("/ai", imageRoutes);
+app.use("/app", appRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/google", googleRoutes);
 app.use("/dashboard", dashboardRoutes);

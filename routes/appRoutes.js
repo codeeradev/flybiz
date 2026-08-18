@@ -5,9 +5,6 @@ const verifyToken = require("../middleware/authToken");
 
 const { getInsights } = require("../controllers/appController");
 
-router.post("/send-otp", sendOtp);
-router.post("/login", verifyOtp);
-
-router.post("/update-profile", verifyToken, getInsights);
+router.post("/get-insights", verifyToken, getInsights);
 
 module.exports = router;
