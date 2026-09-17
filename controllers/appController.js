@@ -11,7 +11,7 @@ exports.getInsights = async (req, res) => {
           growth: 12,
 
           username: "@yourbusiness",
-          status: "active",
+          status: "inactive",
           connectedOn: "12 May 2025",
 
           metricType: "followers",
@@ -27,7 +27,7 @@ exports.getInsights = async (req, res) => {
           growth: 9,
 
           username: "Your Business",
-          status: "active",
+          status: "inactive",
           connectedOn: "10 May 2025",
 
           metricType: "followers",
